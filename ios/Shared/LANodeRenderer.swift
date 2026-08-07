@@ -1,0 +1,348 @@
+import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// The recursive renderer.
+///
+/// Recursion is erased through `AnyView` at each child boundary. SwiftUI's
+/// preferred `some View` cannot express a view whose body contains itself — the
+/// type would be infinite — and the trees here are a handful of nodes deep, so
+/// the erasure costs nothing measurable next to the system's own compositing.
+
+// MARK: - Entry point
+
+@available(iOS 16.1, *)
+public struct LANodeView: View {
+    public let node: LANode?
+
+    public init(_ node: LANode?) {
+        self.node = node
+    }
+
+    public var body: some View {
+        rendered
+    }
+
+    private var rendered: AnyView {
+        guard let node else { return AnyView(EmptyView()) }
+
+        switch node {
+        case .text(let n): return AnyView(LATextView(node: n))
+        case .image(let n): return AnyView(LAImageView(node: n))
+        case .row(let n): return AnyView(LARowView(node: n))
+        case .column(let n): return AnyView(LAColumnView(node: n))
+        case .progress(let n): return AnyView(LAProgressView(node: n))
+        case .circularProgress(let n): return AnyView(LACircularProgressView(node: n))
+        case .metric(let n): return AnyView(LAMetricView(node: n))
+        case .countdown(let n): return AnyView(LACountdownView(node: n))
+        case .spacer(let n): return AnyView(Spacer(minLength: n.minLength))
+        case .divider(let n): return AnyView(LADividerView(node: n))
+        case .padding(let n): return AnyView(LAPaddingView(node: n))
+        case .container(let n): return AnyView(LAContainerView(node: n))
+        }
+    }
+}
+
+// MARK: - text
+
+@available(iOS 16.1, *)
+struct LATextView: View {
+    let node: LATextNode
+
+    var body: some View {
+        var font = Font.system(size: node.size ?? 15)
+        if let weight = node.weight { font = font.weight(weight) }
+        if node.monospacedDigit { font = font.monospacedDigit() }
+        if node.italic { font = font.italic() }
+
+        return Text(node.value)
+            .font(font)
+            .foregroundColor(node.color)
+            .multilineTextAlignment(node.alignment?.0 ?? .leading)
+            .lineLimit(node.maxLines ?? 1)
+            .opacity(node.opacity ?? 1)
+            .frame(maxWidth: node.alignment == nil ? nil : .infinity,
+                   alignment: node.alignment?.1 ?? .leading)
+    }
+}
+
+// MARK: - image
+
+@available(iOS 16.1, *)
+struct LAImageView: View {
+    let node: LAImageNode
+
+    var body: some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: node.cornerRadius ?? 0))
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch node.source {
+        case .systemName:
+            Image(systemName: node.value)
+                .font(.system(size: node.size ?? 15))
+                .foregroundColor(node.color)
+                .frame(width: node.width, height: node.height)
+        case .asset, .network, .file:
+            #if canImport(UIKit)
+            if let image = LAImageLoader.image(for: node) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: node.width ?? node.size,
+                           height: node.height ?? node.size)
+                    .clipped()
+            } else {
+                // Not cached yet: reserve the space so the layout does not jump
+                // when the bytes land on a later update.
+                Color.clear
+                    .frame(width: node.width ?? node.size ?? 0,
+                           height: node.height ?? node.size ?? 0)
+            }
+            #else
+            EmptyView()
+            #endif
+        }
+    }
+}
+
+// MARK: - stacks
+
+@available(iOS 16.1, *)
+struct LARowView: View {
+    let node: LAStackNode
+
+    var body: some View {
+        HStack(alignment: node.align.vertical, spacing: node.spacing ?? 4) {
+            if node.distribution.leadingSpacer { Spacer(minLength: 0) }
+            ForEach(Array(node.children.enumerated()), id: \.offset) { index, child in
+                LANodeView(child)
+                if node.distribution.interleavedSpacers,
+                   index < node.children.count - 1 {
+                    Spacer(minLength: 0)
+                }
+            }
+            if node.distribution.trailingSpacer { Spacer(minLength: 0) }
+        }
+    }
+}
+
+@available(iOS 16.1, *)
+struct LAColumnView: View {
+    let node: LAStackNode
+
+    var body: some View {
+        VStack(alignment: node.align.horizontal, spacing: node.spacing ?? 2) {
+            if node.distribution.leadingSpacer { Spacer(minLength: 0) }
+            ForEach(Array(node.children.enumerated()), id: \.offset) { index, child in
+                LANodeView(child)
+                if node.distribution.interleavedSpacers,
+                   index < node.children.count - 1 {
+                    Spacer(minLength: 0)
+                }
+            }
+            if node.distribution.trailingSpacer { Spacer(minLength: 0) }
+        }
+    }
+}
+
+// MARK: - progress
+
+@available(iOS 16.1, *)
+struct LAProgressView: View {
+    let node: LAProgressNode
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Drawn by hand rather than with `ProgressView`: the system style
+            // ignores `tint` inside the Dynamic Island on some iOS versions and
+            // cannot express a custom track colour or corner radius.
+            GeometryReader { proxy in
+                let radius = node.cornerRadius ?? node.height / 2
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(node.track ?? Color.white.opacity(0.22))
+                    RoundedRectangle(cornerRadius: radius)
+                        .fill(node.tint ?? Color.accentColor)
+                        .frame(width: max(proxy.size.width * node.value, node.value > 0 ? node.height : 0))
+                }
+            }
+            .frame(height: node.height)
+
+            if let label = node.label {
+                Text(label)
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundColor(node.tint)
+            }
+        }
+        .frame(height: node.height)
+    }
+}
+
+@available(iOS 16.1, *)
+struct LACircularProgressView: View {
+    let node: LACircularProgressNode
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(node.track ?? Color.white.opacity(0.22),
+                        lineWidth: node.lineWidth)
+            Circle()
+                .trim(from: 0, to: node.value)
+                .stroke(node.tint ?? Color.accentColor,
+                        style: StrokeStyle(lineWidth: node.lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if let center = node.center {
+                LANodeView(center)
+            }
+        }
+        .frame(width: node.size, height: node.size)
+    }
+}
+
+// MARK: - metric
+
+@available(iOS 16.1, *)
+struct LAMetricView: View {
+    let node: LAMetricNode
+
+    var body: some View {
+        VStack(alignment: node.align.horizontal, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(node.value)
+                    .font(.system(size: node.valueSize, weight: .semibold).monospacedDigit())
+                    .foregroundColor(node.tint)
+                if let unit = node.unit {
+                    Text(unit)
+                        .font(.system(size: node.labelSize, weight: .medium))
+                        .foregroundColor(node.tint?.opacity(0.8) ?? .secondary)
+                }
+            }
+            if let label = node.label {
+                HStack(spacing: 3) {
+                    if let symbol = node.symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: node.labelSize))
+                    }
+                    Text(label)
+                        .font(.system(size: node.labelSize))
+                }
+                .foregroundColor(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: node.align.frame)
+    }
+}
+
+// MARK: - countdown
+
+@available(iOS 16.1, *)
+struct LACountdownView: View {
+    let node: LACountdownNode
+
+    var body: some View {
+        var font = Font.system(size: node.size ?? 15)
+        if let weight = node.weight { font = font.weight(weight) }
+        if node.monospacedDigit { font = font.monospacedDigit() }
+
+        // `Text(date, style:)` is updated by the system itself: no payload
+        // update, no wake-up, no APNs push. Anything that changes every second
+        // belongs here rather than in a `text` node.
+        return HStack(spacing: 3) {
+            if let prefix = node.prefix { Text(prefix) }
+            Text(node.date, style: node.textStyle)
+            if let suffix = node.suffix { Text(suffix) }
+        }
+        .font(font)
+        .foregroundColor(node.color)
+        .multilineTextAlignment(node.alignment?.0 ?? .leading)
+        .lineLimit(1)
+        .frame(maxWidth: node.alignment == nil ? nil : .infinity,
+               alignment: node.alignment?.1 ?? .leading)
+    }
+}
+
+// MARK: - divider
+
+@available(iOS 16.1, *)
+struct LADividerView: View {
+    let node: LADividerNode
+
+    var body: some View {
+        Rectangle()
+            .fill(node.color ?? Color.white.opacity(0.18))
+            .frame(width: node.vertical ? node.thickness : nil,
+                   height: node.vertical ? nil : node.thickness)
+    }
+}
+
+// MARK: - padding / container
+
+@available(iOS 16.1, *)
+struct LAPaddingView: View {
+    let node: LAPaddingNode
+
+    var body: some View {
+        LANodeView(node.child)
+            .padding(node.insets.edgeInsets)
+    }
+}
+
+@available(iOS 16.1, *)
+struct LAContainerView: View {
+    let node: LAContainerNode
+
+    var body: some View {
+        LANodeView(node.child)
+            .padding(node.padding?.edgeInsets ?? EdgeInsets())
+            .frame(width: node.width, height: node.height, alignment: node.align.frame)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: node.cornerRadius ?? 0))
+            .overlay(border)
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if let gradient = node.gradient {
+            LinearGradient(colors: gradient,
+                           startPoint: .topLeading,
+                           endPoint: .bottomTrailing)
+        } else if let background = node.background {
+            background
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private var border: some View {
+        if let color = node.borderColor, let width = node.borderWidth, width > 0 {
+            RoundedRectangle(cornerRadius: node.cornerRadius ?? 0)
+                .stroke(color, lineWidth: width)
+        }
+    }
+}
+
+// MARK: - Region host
+
+/// Draws one region of a layout with the layout's theme applied.
+@available(iOS 16.1, *)
+public struct LARegionView: View {
+    public let layout: LALayout
+    public let region: LALayout.Region
+
+    public init(layout: LALayout, region: LALayout.Region) {
+        self.layout = layout
+        self.region = region
+    }
+
+    public var body: some View {
+        LANodeView(layout.node(region))
+            .foregroundColor(layout.theme.foreground)
+    }
+}

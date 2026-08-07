@@ -1,0 +1,15 @@
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - always_declare_return_types
+    - prefer_const_constructors
+    - prefer_final_locals
+    - unawaited_futures
+
+analyzer:
+  errors:
+    todo: ignore
+  exclude:
+    - example/**
+    - "**/*.g.dart"

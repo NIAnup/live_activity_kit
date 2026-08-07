@@ -1,0 +1,72 @@
+import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
+
+/// Resolves `LAImageNode`s to bytes in the shared App Group container.
+///
+/// A Live Activity view is rendered synchronously by the system, in an
+/// extension with a hard memory ceiling — there is no safe place to await a
+/// download. So the *app* process pre-caches every asset and network image into
+/// the App Group before it starts or updates an activity (see
+/// `LiveActivityImagePrefetcher`), and the extension only ever reads from disk.
+public enum LAImageLoader {
+
+    /// Deterministic, dependency-free cache key. FNV-1a is more than enough to
+    /// separate a handful of image URLs and avoids pulling in CryptoKit.
+    public static func cacheKey(for value: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in value.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01B3
+        }
+        return String(hash, radix: 16)
+    }
+
+    public static func relativePath(for node: LAImageNode) -> String? {
+        switch node.source {
+        case .systemName:
+            return nil
+        case .file:
+            return node.value
+        case .asset, .network:
+            return "images/\(cacheKey(for: node.value)).img"
+        }
+    }
+
+    public static func fileURL(for node: LAImageNode) -> URL? {
+        guard let path = relativePath(for: node) else { return nil }
+        return LiveActivityAppGroup.fileURL(relativePath: path)
+    }
+
+    #if canImport(UIKit)
+    /// Loads and downsamples the cached image.
+    ///
+    /// Downsampling matters: widget extensions are jetsam-killed well before
+    /// apps are, and decoding a full-resolution photo for a 40-point thumbnail
+    /// is the fastest way to get an activity silently dropped.
+    public static func image(for node: LAImageNode) -> UIImage? {
+        guard let url = fileURL(for: node) else { return nil }
+        let maxDimension = max(node.width ?? 0, node.height ?? 0, node.size ?? 0)
+        let pixels = maxDimension > 0 ? maxDimension * UIScreen.main.scale : 256
+        return downsample(url: url, maxPixelSize: pixels)
+    }
+
+    private static func downsample(url: URL, maxPixelSize: CGFloat) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions) else {
+            return nil
+        }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 1),
+        ] as [CFString: Any] as CFDictionary
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+            return nil
+        }
+        return UIImage(cgImage: cgImage)
+    }
+    #endif
+}

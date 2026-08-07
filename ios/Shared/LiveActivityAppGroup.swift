@@ -1,0 +1,158 @@
+import Foundation
+
+/// Shared-container access for both processes.
+///
+/// The app and the widget extension have separate sandboxes; an App Group is
+/// the only channel between them. The group identifier is read from the
+/// `LiveActivityKitAppGroup` key that `dart run live_activity_kit:setup` writes
+/// into both Info.plists, so neither this file nor the generated widget ever
+/// hard-codes a team-specific string.
+public enum LiveActivityAppGroup {
+
+    public enum Failure: Error, LocalizedError {
+        case notConfigured
+        case unavailable(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .notConfigured:
+                return "Missing Info.plist key 'LiveActivityKitAppGroup'. Run `dart run live_activity_kit:setup`."
+            case .unavailable(let group):
+                return "App Group '\(group)' is not available. Check that both the app and the widget extension have the App Groups capability with this identifier."
+            }
+        }
+    }
+
+    /// Darwin notification name posted after every write.
+    public static let didChangeNotification = "com.live_activity_kit.storeDidChange"
+
+    /// The configured group identifier, e.g. `group.com.example.app.liveactivity`.
+    public static var identifier: String? {
+        Bundle.main.object(forInfoDictionaryKey: "LiveActivityKitAppGroup") as? String
+    }
+
+    public static var defaults: UserDefaults? {
+        guard let identifier else { return nil }
+        return UserDefaults(suiteName: identifier)
+    }
+
+    /// Shared on-disk container — used for cached network images and any
+    /// payload too large for `UserDefaults`.
+    public static var containerURL: URL? {
+        guard let identifier else { return nil }
+        return FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: identifier
+        )
+    }
+
+    // MARK: - Key/value
+
+    /// Stores a JSON string. An empty string deletes the key.
+    public static func write(_ json: String, forKey key: String) throws {
+        guard let identifier else { throw Failure.notConfigured }
+        guard let defaults else { throw Failure.unavailable(identifier) }
+        if json.isEmpty {
+            defaults.removeObject(forKey: namespaced(key))
+        } else {
+            defaults.set(json, forKey: namespaced(key))
+        }
+        postChange(key: key)
+    }
+
+    public static func read(forKey key: String) -> String? {
+        defaults?.string(forKey: namespaced(key))
+    }
+
+    public static func allKeys() -> [String] {
+        guard let defaults else { return [] }
+        return defaults.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix(prefix) }
+            .map { String($0.dropFirst(prefix.count)) }
+    }
+
+    // MARK: - Files
+
+    /// Writes `data` into the shared container and returns its URL. Used for
+    /// assets and downloaded artwork the extension needs to draw.
+    @discardableResult
+    public static func writeFile(_ data: Data, relativePath: String) throws -> URL {
+        guard let containerURL else { throw Failure.notConfigured }
+        let url = containerURL.appendingPathComponent(relativePath)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+        return url
+    }
+
+    public static func fileURL(relativePath: String) -> URL? {
+        guard let url = containerURL?.appendingPathComponent(relativePath),
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
+    // MARK: - Cross-process change notification
+
+    /// Posts a Darwin notification. `UserDefaults` KVO does not fire across
+    /// process boundaries, so this is the only reliable signal an extension
+    /// (or the app) can observe.
+    public static func postChange(key: String) {
+        defaults?.set(key, forKey: namespaced("__lastChangedKey"))
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(didChangeNotification as CFString),
+            nil,
+            nil,
+            true
+        )
+    }
+
+    public static var lastChangedKey: String? {
+        defaults?.string(forKey: namespaced("__lastChangedKey"))
+    }
+
+    /// Registers `handler` for cross-process writes. The returned token must be
+    /// retained; deallocating it removes the observer.
+    public static func observeChanges(_ handler: @escaping (String?) -> Void) -> Any {
+        Observer(handler: handler)
+    }
+
+    private final class Observer {
+        private let handler: (String?) -> Void
+
+        init(handler: @escaping (String?) -> Void) {
+            self.handler = handler
+            let box = Unmanaged.passUnretained(self).toOpaque()
+            CFNotificationCenterAddObserver(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                box,
+                { _, observer, _, _, _ in
+                    guard let observer else { return }
+                    let this = Unmanaged<Observer>.fromOpaque(observer)
+                        .takeUnretainedValue()
+                    DispatchQueue.main.async {
+                        this.handler(LiveActivityAppGroup.lastChangedKey)
+                    }
+                },
+                didChangeNotification as CFString,
+                nil,
+                .deliverImmediately
+            )
+        }
+
+        deinit {
+            CFNotificationCenterRemoveObserver(
+                CFNotificationCenterGetDarwinNotifyCenter(),
+                Unmanaged.passUnretained(self).toOpaque(),
+                CFNotificationName(LiveActivityAppGroup.didChangeNotification as CFString),
+                nil
+            )
+        }
+    }
+
+    // MARK: - Private
+
+    private static let prefix = "lak."
+    private static func namespaced(_ key: String) -> String { prefix + key }
+}
