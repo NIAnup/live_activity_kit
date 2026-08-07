@@ -24,8 +24,50 @@ progress.
 
 ---
 
+## What Live Activities look like on iOS
+
+A Live Activity has **one activity, four presentations**. iOS picks which to show based on
+where the user is looking — and this package lets you give each one its own component tree.
+
+### Dynamic Island — minimal, compact, expanded
+
+<img src="https://raw.githubusercontent.com/NIAnup/live_activity_kit/main/doc/images/dynamic-island-states.jpg" width="640" alt="iOS Dynamic Island showing minimal, compact and expanded Live Activity presentations">
+
+The same activity collapses to a couple of glyphs beside the sensor housing, and expands
+on long-press into a four-region layout. In Dart: `minimal:`, `compactLeading:` /
+`compactTrailing:`, and the four `expanded*:` parameters.
+
+### Lock Screen — the full banner
+
+<img src="https://raw.githubusercontent.com/NIAnup/live_activity_kit/main/doc/images/lock-screen-live-activities.jpg" width="640" alt="iOS Lock Screen Live Activities showing meal timing, fasting progress and interactive buttons">
+
+The roomiest presentation, and the one most apps spend their design effort on. In Dart:
+`lockScreen:`, built from `LA.column` / `LA.row` / `LA.progress` / `LA.countdown`.
+
+### Order & delivery tracking, updating over time
+
+<img src="https://raw.githubusercontent.com/NIAnup/live_activity_kit/main/doc/images/delivery-tracking.jpg" width="720" alt="Food delivery Live Activity progressing through preparing, out for delivery and arriving states on the iOS Lock Screen">
+
+One activity, pushed through several states as the order progresses — see the
+[delivery recipe](#food-delivery--order-tracking) for the exact code.
+
+### Workouts and fitness
+
+<img src="https://raw.githubusercontent.com/NIAnup/live_activity_kit/main/doc/images/workout-dynamic-island.jpg" width="420" alt="Workout Live Activity in the iOS Dynamic Island with a timer and progress ring">
+
+Rings, timers and stat rows — `LA.circularProgress`, `LA.stopwatch` and `LA.metric`. See
+the [workout recipe](#workout--running-tracker).
+
+> **About these images:** they are Apple and third-party app marketing materials, included
+> to illustrate the iOS Live Activity presentations this package targets. They are not
+> screenshots of the bundled example app, and are not covered by this package's MIT
+> licence.
+
+---
+
 ## Contents
 
+- [What Live Activities look like on iOS](#what-live-activities-look-like-on-ios)
 - [Why this package](#why-this-package)
 - [Quick start (5 minutes)](#quick-start-5-minutes)
 - [Installation & setup](#installation--setup)

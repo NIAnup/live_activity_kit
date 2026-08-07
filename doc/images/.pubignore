@@ -1,0 +1,4 @@
+# README illustrations live in git and are referenced from GitHub raw URLs, so they
+# render on pub.dev without shipping ~500 KB inside every `pub get`.
+*.jpg
+*.png
