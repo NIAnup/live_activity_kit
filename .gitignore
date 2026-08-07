@@ -25,3 +25,9 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Reference material (third-party marketing images), not package assets
+/image.png
+/secondImage.png
+/thirdImage.png
+/fourthImage.png

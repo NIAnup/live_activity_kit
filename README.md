@@ -1,28 +1,113 @@
 # live_activity_kit
 
-Build iOS **Live Activities** and **Dynamic Island** experiences entirely from Dart.
+**Build iOS Live Activities and Dynamic Island widgets in Flutter — entirely from Dart.
+No Swift, no manual Xcode setup.**
 
-Apple does not let Flutter render inside a Live Activity — the UI has to be SwiftUI, in a
-widget extension, in a separate process. `live_activity_kit` closes that gap: you declare
-the UI with a Flutter-like component DSL, the package ships it across as a compact JSON
-layout tree, and a bundled recursive SwiftUI renderer draws it.
+[![pub package](https://img.shields.io/pub/v/live_activity_kit.svg)](https://pub.dev/packages/live_activity_kit)
+[![platform](https://img.shields.io/badge/platform-iOS%2016.1%2B-lightgrey.svg)](https://pub.dev/packages/live_activity_kit)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+`live_activity_kit` is a Flutter plugin for **iOS Live Activities**, the **Dynamic
+Island**, and **Lock Screen widgets**, powered by **ActivityKit** and **WidgetKit**. You
+describe the UI with a Flutter-like component DSL in Dart; the package serializes it to a
+compact JSON layout tree and a bundled **SwiftUI** renderer draws it inside a widget
+extension it generates for you.
 
 ```
-Dart DSL  →  JSON layout tree  →  MethodChannel  →  ActivityKit  →  SwiftUI renderer
+Your Dart code  →  JSON layout tree  →  MethodChannel  →  ActivityKit  →  SwiftUI renderer
 ```
 
-One package, any use case: meals, workouts, deliveries, orders, timers, reminders,
-meditation, trips, water intake — the component system is not tied to a domain.
+It is **not** tied to one use case. The same components build a food delivery tracker, a
+running tracker, an order status bar, a countdown timer, a meal reminder, a ride tracker,
+a meditation session, or anything else you can lay out with text, images, stacks and
+progress.
+
+---
+
+## Contents
+
+- [Why this package](#why-this-package)
+- [Quick start (5 minutes)](#quick-start-5-minutes)
+- [Installation & setup](#installation--setup)
+- [Recipes](#recipes) — delivery tracking, workout, countdown, order status
+- [Components](#components)
+- [Regions: Lock Screen & Dynamic Island](#regions-lock-screen--dynamic-island)
+- [Updating & ending](#updating-and-ending-activities)
+- [Push updates with APNs](#push-updates-with-apns)
+- [App Group storage](#app-group-storage)
+- [Performance](#performance)
+- [Limitations](#limitations)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+
+---
+
+## Why this package
+
+Adding a Live Activity to a Flutter app normally means leaving Flutter entirely. You have
+to create a Widget Extension target by hand, write SwiftUI views, define
+`ActivityAttributes`, configure an App Group, add entitlements, wire a MethodChannel, and
+then keep two separate UIs in sync forever.
+
+Apple does not allow a Flutter engine to render inside a Live Activity — the UI *must* be
+SwiftUI, in a separate extension process. That constraint is not going away, so this
+package absorbs it instead of fighting it:
+
+| Doing it by hand | With `live_activity_kit` |
+|---|---|
+| Create the Widget Extension in Xcode | `dart run live_activity_kit:setup` |
+| Write SwiftUI views per feature | Write `LA.column([...])` in Dart |
+| Define `ActivityAttributes` / `ContentState` | Generated, generic, already done |
+| Configure App Group + entitlements | Automated |
+| Hand-roll a MethodChannel | Built in |
+| Maintain Swift + Dart UI in parallel | One UI, in Dart |
+
+You still get real SwiftUI rendering and real ActivityKit behaviour — you just never open
+the Swift files.
+
+---
+
+## Quick start (5 minutes)
+
+**1. Add the dependency**
+
+```bash
+flutter pub add live_activity_kit
+```
+
+**2. Generate the widget extension**
+
+```bash
+dart run live_activity_kit:setup
+```
+
+**3. Enable the App Group in Xcode** (once — it needs a signed-in Apple ID)
+
+```
+open ios/Runner.xcworkspace
+Runner target                → Signing & Capabilities → + App Groups → tick your group
+LiveActivityKitWidget target → Signing & Capabilities → + App Groups → tick the same group
+```
+
+**4. Start an activity from Dart**
 
 ```dart
+import 'package:live_activity_kit/live_activity_kit.dart';
+
 await LiveActivity.show(
   id: 'meal',
+
+  // Dynamic Island, collapsed
   compact: LA.text('🍱 1:00'),
+
+  // Dynamic Island, expanded
   expanded: LA.column([
     LA.text('Next meal', weight: FontWeight.bold),
     LA.text('Lunch — 1:00 PM'),
     LA.progress(0.65),
   ]),
+
+  // Lock Screen banner
   lockScreen: LA.column([
     LA.row([
       LA.text('Next meal', weight: FontWeight.bold),
@@ -40,394 +125,506 @@ await LiveActivity.show(
 );
 ```
 
----
+**5. Update it and end it**
 
-## Features
+```dart
+await LiveActivity.update(id: 'meal', lockScreen: LA.text('Dinner — 7:30 PM', size: 20));
+await LiveActivity.end(id: 'meal');
+```
 
-- **Flutter-first API** — `show` / `update` / `end`, no Swift required.
-- **Component DSL** — 12 composable components covering the shapes Live Activities allow.
-- **Every region** — lock screen, compact leading/trailing, minimal, and all four
-  expanded Dynamic Island regions, each with its own tree.
-- **Self-updating timers** — `LA.countdown` uses SwiftUI's system-driven date text, so a
-  ticking clock costs zero updates and zero battery.
-- **Multiple simultaneous activities**, keyed by your own ids.
-- **Push updates** — per-activity APNs tokens and iOS 17.2+ push-to-start tokens.
-- **App Group store** — shared key/value and file storage between app and extension.
-- **Deep links** — tap handling delivered back to Dart as a stream.
-- **Images** — SF Symbols, Flutter assets, and network images (pre-cached automatically).
-- **Setup automation** — `dart run live_activity_kit:setup` creates the widget extension,
-  entitlements, App Group and Xcode target.
-- **Safe by construction** — payloads are size-checked against ActivityKit's 4 KiB limit
-  in Dart, with an error that names the activity.
+That's the whole API surface for most apps: `show`, `update`, `end`.
 
 ---
 
-## Requirements
+## Installation & setup
+
+### Requirements
 
 | | |
 |---|---|
-| iOS | 16.1+ (Dynamic Island: iPhone 14 Pro and later) |
-| Xcode | 15+ |
-| Flutter | 3.27+ |
-| Device | Live Activities do **not** run in the iOS simulator on iOS 16 |
+| **iOS** | 16.1+ (Lock Screen), iPhone 14 Pro and later for the Dynamic Island |
+| **Xcode** | 15 or newer |
+| **Flutter** | 3.27 or newer |
+| **Device** | Real device required on iOS 16; the iOS 17+ simulator works |
 
-Android and other platforms are no-ops: every call throws
-`LiveActivityException('unsupported', …)`, and `LiveActivity.support()` reports
-`isSupported: false`, so a single codebase ships fine.
+Other platforms are safe no-ops: `LiveActivity.support()` reports `isSupported: false` and
+calls throw `LiveActivityException('unsupported', …)`, so one codebase ships everywhere.
 
----
-
-## Installation
-
-```yaml
-dependencies:
-  live_activity_kit: ^0.1.0
-```
-
-Then run the setup command from your app directory:
+### What `setup` does for you
 
 ```bash
 dart run live_activity_kit:setup
 ```
 
-It will:
+1. Creates `ios/LiveActivityKitWidget/` — the widget extension plus the SwiftUI renderer.
+2. Derives an App Group (`group.<your.bundle.id>.liveactivity`) and writes it into
+   `Runner.entitlements`, the extension entitlements, and both `Info.plist` files.
+3. Adds `NSSupportsLiveActivities` to `ios/Runner/Info.plist`.
+4. Registers the extension target in `Runner.xcodeproj`, embeds it in your app, and sets
+   its bundle identifier, entitlements, deployment target and Swift version.
 
-1. Create `ios/LiveActivityKitWidget/` with the widget extension and the SwiftUI renderer.
-2. Derive an App Group (`group.<your.bundle.id>.liveactivity`) and write it into
-   `Runner.entitlements`, the extension's entitlements, and both `Info.plist`s.
-3. Add `NSSupportsLiveActivities` to `ios/Runner/Info.plist`.
-4. Register the widget extension target in `Runner.xcodeproj`, embed it in the app, and
-   set its build settings and bundle identifier.
-
-Options:
+Re-running it is safe: generated renderer files are re-synced, and files you edited are
+left alone unless you pass `--force`.
 
 ```bash
 dart run live_activity_kit:setup \
-  --app-group=group.com.acme.app.liveactivity \  # custom App Group
-  --target-name=AcmeWidget \                     # custom extension name
+  --app-group=group.com.acme.app.liveactivity \  # custom App Group id
+  --target-name=AcmeWidget \                     # custom extension target name
   --deployment-target=16.1 \
   --frequent-updates \                           # NSSupportsLiveActivitiesFrequentUpdates
-  --force                                        # overwrite edited widget sources
-  --no-xcode                                     # write files, skip project changes
+  --force \                                      # overwrite edited widget sources
+  --no-xcode                                     # write files, don't touch the project
 ```
 
-### What setup cannot do
+### The three steps a script cannot do
 
-Three steps need a human, and no script can do them for you:
-
-1. **Provisioning.** App Groups are a *signing* capability. The group has to exist on your
-   Apple Developer account and be attached to both bundle identifiers. Open
-   `ios/Runner.xcworkspace`, select each target → *Signing & Capabilities* → **+ App
-   Groups** → tick your group. Xcode creates it on first use; this requires an
-   authenticated Apple ID session, which a CLI does not have.
-2. **Development team.** If `Runner` has no `DEVELOPMENT_TEAM`, set it on both targets.
-3. **One build from Xcode.** `flutter run` builds the extension too, but the first Xcode
-   build is what materialises provisioning profiles for the new target.
+1. **Add the App Group capability** in Xcode for both targets. App Groups are a *signing*
+   capability — creating one requires an authenticated Apple ID session that a CLI does
+   not have.
+2. **Set a development team** on both targets, if `Runner` doesn't have one.
+3. **Build once from Xcode**, so provisioning profiles are materialised for the new
+   target. After that, `flutter run` handles everything.
 
 If the Xcode step fails (usually because the `xcodeproj` Ruby gem is missing — it ships
-with CocoaPods), the command prints the exact manual steps and exits non-zero.
+with CocoaPods), the command prints exact manual instructions and exits non-zero.
 
 ---
 
-## Quick start
+## Recipes
+
+Copy-paste starting points for the most common Live Activity use cases.
+
+### Food delivery / order tracking
 
 ```dart
-import 'package:live_activity_kit/live_activity_kit.dart';
-
-// 1. Check the device and the user's settings.
-final support = await LiveActivity.support();
-if (!support.canStart) return;
-
-// 2. Start.
-final handle = await LiveActivity.show(
+await LiveActivity.show(
   id: 'order-1042',
+  theme: LATheme(tint: Colors.blue, foreground: Colors.white),
+  deepLink: 'myapp://order/1042',
+
   compactLeading: LA.symbol('bicycle'),
   compactTrailing: LA.countdown(eta, style: LACountdownStyle.relative),
-  lockScreen: LA.column([
-    LA.text('Out for delivery', size: 20, weight: FontWeight.bold),
-    LA.progress(0.7, tint: Colors.blue),
-  ], spacing: 6),
-);
+  minimal: LA.symbol('bicycle'),
 
-// 3. Update — regions you omit keep their previous content.
+  lockScreen: LA.column([
+    LA.row([
+      LA.symbol('bicycle', size: 14, color: Colors.blue),
+      LA.text('Order #1042', size: 13, weight: FontWeight.w600),
+      LA.spacer(),
+      LA.countdown(eta, style: LACountdownStyle.relative, prefix: 'arrives'),
+    ], spacing: 6),
+    LA.text('Out for delivery', size: 20, weight: FontWeight.bold),
+    LA.progress(0.7, tint: Colors.blue, label: '3/4'),
+  ], spacing: 6),
+
+  enablePush: true,      // let your server drive it — see "Push updates"
+  relevanceScore: 80,
+);
+```
+
+### Workout / running tracker
+
+```dart
+await LiveActivity.show(
+  id: 'run',
+  compactLeading: LA.symbol('figure.run', color: Colors.orange),
+  compactTrailing: LA.stopwatch(startedAt),        // ticks by itself, no updates
+
+  expandedLeading: LA.metric('4.21', unit: 'km', label: 'distance'),
+  expandedTrailing: LA.metric('5:12', unit: '/km', label: 'pace', align: LAAlign.end),
+  expandedCenter: LA.stopwatch(startedAt, size: 22, weight: FontWeight.bold),
+  expandedBottom: LA.progress(0.84, tint: Colors.orange),
+
+  lockScreen: LA.row([
+    LA.circularProgress(0.84, size: 54, lineWidth: 6, tint: Colors.orange,
+        center: LA.text('84', size: 15, weight: FontWeight.bold)),
+    LA.column([
+      LA.stopwatch(startedAt, size: 26, weight: FontWeight.bold),
+      LA.row([
+        LA.metric('4.21', unit: 'km', label: 'distance'),
+        LA.metric('5:12', unit: '/km', label: 'pace'),
+        LA.metric('261', unit: 'kcal', label: 'burned'),
+      ], distribution: LADistribution.spaceBetween),
+    ], spacing: 4),
+  ], spacing: 14),
+
+  staleAfter: const Duration(minutes: 1),   // dim it if GPS stops feeding us
+);
+```
+
+### Countdown timer / meeting reminder
+
+The cheapest possible activity — started once, never updated:
+
+```dart
+await LiveActivity.show(
+  id: 'meeting',
+  compactLeading: LA.symbol('video.fill'),
+  compactTrailing: LA.countdown(startsAt),
+  lockScreen: LA.column([
+    LA.text('Design review', size: 14, opacity: 0.8),
+    LA.countdown(startsAt, size: 34, weight: FontWeight.bold),
+  ], spacing: 4),
+);
+// No update() calls needed — the system redraws the clock.
+```
+
+### Order status with a final frame
+
+```dart
 await LiveActivity.update(
   id: 'order-1042',
-  lockScreen: LA.text('Arriving now', size: 20),
+  lockScreen: LA.text('Arriving now', size: 20, weight: FontWeight.bold),
   alert: const LiveActivityAlert(title: 'Almost there', body: 'Your order is nearby'),
 );
 
-// 4. End, leaving a final frame on the Lock Screen.
 await LiveActivity.end(
   id: 'order-1042',
-  lockScreen: LA.text('Delivered ✓', size: 20),
+  lockScreen: LA.row([
+    LA.symbol('checkmark.circle.fill', size: 22, color: Colors.green),
+    LA.text('Delivered', size: 17, weight: FontWeight.bold),
+  ], spacing: 10),
+  policy: LiveActivityEndPolicy.after(DateTime.now().add(const Duration(minutes: 5))),
 );
 ```
+
+The `example/` app contains all four of these as complete, runnable demos.
 
 ---
 
 ## Components
 
-Every component is a `LA.*` factory returning an immutable `LANode`.
+Each component is an `LA.*` factory returning an immutable `LANode`. Arbitrary Flutter
+widgets are **not** supported (see [Limitations](#limitations)) — this fixed set is what
+SwiftUI can render inside a Live Activity.
 
-| Component | Purpose |
+| Component | What it renders |
 |---|---|
 | `LA.text` | Text, emoji, any Unicode SwiftUI can draw |
-| `LA.image` / `LA.symbol` / `LA.asset` / `LA.networkImage` | SF Symbols, Flutter assets, remote images |
-| `LA.row` | Horizontal stack (`HStack`) |
-| `LA.column` | Vertical stack (`VStack`) |
-| `LA.progress` | Linear progress bar with optional caption |
-| `LA.circularProgress` | Progress ring with an optional centred node |
+| `LA.symbol` | An SF Symbol — zero payload cost, always instant |
+| `LA.asset` | A Flutter asset (auto-copied into the App Group) |
+| `LA.networkImage` | A remote image (downloaded and cached by the app, not the extension) |
+| `LA.row` | Horizontal stack (SwiftUI `HStack`) |
+| `LA.column` | Vertical stack (SwiftUI `VStack`) |
+| `LA.progress` | Linear progress bar, optional caption |
+| `LA.circularProgress` | Progress ring, optional centred node |
 | `LA.metric` | Value + unit + label + icon — for stat rows |
-| `LA.countdown` / `LA.stopwatch` | System-driven timer; **no updates needed** |
+| `LA.countdown` / `LA.stopwatch` | **Self-updating timer — needs no updates at all** |
 | `LA.spacer` | Flexible space |
 | `LA.divider` | Hairline rule |
-| `LA.padding` | Insets |
-| `LA.container` | Background, gradient, corner radius, border, fixed size |
+| `LA.padding` | Insets around a child |
+| `LA.container` | Background / gradient / corner radius / border / fixed size |
 
-Shared styling:
+### Styling
+
+The DSL takes the familiar `dart:ui` types, so it reads like Flutter code:
 
 ```dart
 LA.text(
   'Lunch',
   size: 20,
-  weight: FontWeight.bold,       // dart:ui FontWeight
-  color: Colors.green,           // dart:ui Color
-  align: TextAlign.center,       // dart:ui TextAlign
+  weight: FontWeight.bold,        // Flutter FontWeight
+  color: Colors.green,            // Flutter Color
+  align: TextAlign.center,        // Flutter TextAlign
   maxLines: 2,
   opacity: 0.8,
   italic: true,
-  monospacedDigit: true,         // stops digits jittering as they change
+  monospacedDigit: true,          // stops digits jittering as they change
   uppercase: true,
 );
 
 LA.row(
   [...],
   spacing: 8,
-  align: LAAlign.center,                     // cross axis
-  distribution: LADistribution.spaceBetween, // main axis
+  align: LAAlign.center,                      // cross axis
+  distribution: LADistribution.spaceBetween,  // main axis
+);
+
+LA.container(
+  child: LA.text('Badge'),
+  gradient: const [Color(0xFF06214A), Color(0xFF0B0B0F)],
+  cornerRadius: 12,
+  padding: const LAInsets.symmetric(horizontal: 8, vertical: 4),
 );
 ```
 
-### Timers are special
+### Timers deserve their own paragraph
 
-`LA.countdown` maps to SwiftUI's `Text(date, style:)`, which the **system** redraws. A
-counting clock therefore needs no updates at all:
+`LA.countdown` maps to SwiftUI's `Text(date, style:)`, which **the system** redraws. A
+counting clock therefore needs **zero** updates — it keeps ticking while your app is
+suspended or even terminated:
 
 ```dart
-LA.countdown(meetingStart)                                  // 04:32, ticking
-LA.countdown(eta, style: LACountdownStyle.relative)         // "in 12 minutes"
-LA.countdown(eta, style: LACountdownStyle.time)             // "1:04 PM"
-LA.stopwatch(startedAt)                                     // counts up
+LA.countdown(meetingStart)                             // 04:32, ticking down
+LA.countdown(eta, style: LACountdownStyle.relative)    // "in 12 minutes"
+LA.countdown(eta, style: LACountdownStyle.time)        // "1:04 PM"
+LA.stopwatch(startedAt)                                // counts up
 ```
 
-Pushing a new `LA.text('04:32')` every second instead is the single most common way to
-burn through iOS's update budget. Don't.
+Pushing a new `LA.text('04:32')` every second instead is the single most common way apps
+burn through iOS's Live Activity update budget and end up frozen. Use the countdown.
 
 ---
 
-## Regions
+## Regions: Lock Screen & Dynamic Island
 
-| Parameter | Where it shows |
+iOS shows your activity in several places, each with its own space. Every region takes its
+own component tree.
+
+```
+COLLAPSED DYNAMIC ISLAND            MINIMAL (two activities competing)
+┌───────────────────────────┐       ┌────┐        ┌────┐
+│ ●compactLeading   compact │       │ ●  │  ····  │ ●  │
+│                 Trailing● │       └────┘        └────┘
+└───────────────────────────┘       one glyph of space
+
+EXPANDED DYNAMIC ISLAND             LOCK SCREEN / BANNER / STANDBY
+┌─────────────────────────────┐     ┌─────────────────────────────┐
+│ expandedLeading   Trailing  │     │                             │
+│       expandedCenter        │     │        lockScreen           │
+│       expandedBottom        │     │                             │
+└─────────────────────────────┘     └─────────────────────────────┘
+```
+
+| Parameter | Where it appears |
 |---|---|
-| `lockScreen` | Lock Screen, banner, StandBy |
-| `compactLeading` | Dynamic Island, collapsed, left of the sensor housing |
-| `compactTrailing` | Dynamic Island, collapsed, right of it |
+| `lockScreen` | Lock Screen, notification banner, StandBy |
+| `compactLeading` | Collapsed island, left of the sensor housing |
+| `compactTrailing` | Collapsed island, right of it |
 | `compact` | Shorthand for `compactTrailing` |
-| `minimal` | Dynamic Island when another activity is competing — room for one glyph |
+| `minimal` | When another activity competes for the island — room for one glyph |
 | `expandedLeading` / `expandedTrailing` / `expandedCenter` / `expandedBottom` | Expanded island |
-| `expanded` | Shorthand for `expandedBottom`, ignored if another expanded region is set |
+| `expanded` | Shorthand for `expandedBottom`, ignored if you set another expanded region |
 
-Fallbacks: `compactTrailing ← compact`, `minimal ← compactTrailing ← compact`. The
-lock-screen tree is never reused for the island — it is almost always too tall.
+**Fallbacks:** `compactTrailing ← compact`, and `minimal ← compactTrailing ← compact`. The
+lock-screen tree is deliberately never reused for the island — it is almost always too
+tall and would be clipped.
 
-Theme the whole activity with `LATheme`:
+### Theming
 
 ```dart
 theme: LATheme(
-  background: const Color(0xFF0B1F14),   // lock-screen tint (iOS 16.2+)
+  background: const Color(0xFF0B1F14),                            // Lock Screen tint
   backgroundGradient: const [Color(0xFF06214A), Color(0xFF0B0B0F)],
-  tint: Colors.green,                     // island keyline glow
-  foreground: Colors.white,               // default text colour
+  tint: Colors.green,          // Dynamic Island keyline glow
+  foreground: Colors.white,    // default text colour for the whole tree
 )
 ```
 
 ---
 
-## Updating activities
+## Updating and ending activities
+
+### Update
+
+Regions you omit keep their previous content, so a partial update is normal and cheap:
 
 ```dart
 await LiveActivity.update(
   id: 'meal',
-  lockScreen: LA.text('Dinner'),   // other regions keep their trees
+  lockScreen: LA.text('Dinner'),        // compact/expanded regions are preserved
 );
 
 await LiveActivity.update(
   id: 'meal',
   lockScreen: LA.text('Dinner'),
-  merge: false,                    // replace the layout outright
+  merge: false,                         // replace the layout outright
 );
 ```
 
-Extras:
+Optional extras:
 
-- `alert:` shows a banner and wakes the screen. iOS rate-limits these — use them for
-  genuine status changes, not for every tick.
-- `staleAfter:` tells iOS when to consider the content out of date and dim it.
-- `relevanceScore:` orders competing activities in the Dynamic Island.
+| Parameter | Effect |
+|---|---|
+| `alert:` | Shows a banner and wakes the screen. iOS rate-limits these — use for real status changes, not every tick |
+| `staleAfter:` | iOS dims the activity once the content is this old |
+| `relevanceScore:` | Orders competing activities in the Dynamic Island |
 
-Observing:
-
-```dart
-LiveActivity.states.listen((change) => print('${change.id} → ${change.state.name}'));
-LiveActivity.deepLinks.listen(router.go);
-final running = await LiveActivity.activities();
-final isLive  = await LiveActivity.isRunning('meal');
-```
-
----
-
-## Ending activities
+### End
 
 ```dart
-await LiveActivity.end(id: 'run');                                   // default window
+await LiveActivity.end(id: 'run');                                        // default window
 await LiveActivity.end(id: 'run', policy: const LiveActivityEndPolicy.immediate());
 await LiveActivity.end(
   id: 'run',
-  lockScreen: LA.text('Workout complete'),                            // final frame
+  lockScreen: LA.text('Workout complete'),                                // final frame
   policy: LiveActivityEndPolicy.after(DateTime.now().add(const Duration(minutes: 5))),
 );
-await LiveActivity.endAll(immediate: true);                           // e.g. on logout
+await LiveActivity.endAll(immediate: true);                               // e.g. on logout
 ```
 
-With the default policy iOS keeps the final frame on the Lock Screen for up to four
-hours — usually what you want for "Delivered" or "Workout complete".
+With the default policy iOS keeps that final frame on the Lock Screen for up to four
+hours — usually exactly what you want for "Delivered" or "Workout complete".
+
+### Observing
+
+```dart
+LiveActivity.states.listen((change) => print('${change.id} → ${change.state.name}'));
+LiveActivity.deepLinks.listen(router.go);                 // taps on the activity
+
+final running = await LiveActivity.activities();          // survives app restarts
+final isLive  = await LiveActivity.isRunning('meal');
+final support = await LiveActivity.support();             // canStart, supportsDynamicIsland…
+```
+
+Multiple activities run simultaneously — just give each one its own `id`.
+
+---
+
+## Push updates with APNs
+
+If the data lives on a server (delivery, ride, flight, sports score), update the activity
+*from* the server. Your app cannot reliably update a Live Activity while backgrounded, and
+cannot update it at all once terminated.
+
+```dart
+await LiveActivity.show(id: 'order-1042', enablePush: true, /* … */);
+
+LiveActivity.pushTokens
+    .where((t) => t.id == 'order-1042')
+    .listen((t) => api.registerActivityToken(t.id, t.token));   // tokens rotate — resend
+
+// iOS 17.2+: start an activity from the server, app never launched
+final startToken = await LiveActivity.pushToStartToken();
+```
+
+The APNs payload, topic format, `content-state` shape, push-to-start, and the rules about
+`revision` and `timestamp` are documented in full — with working JSON — in
+**[doc/background_and_push.md](doc/background_and_push.md)**.
+
+**Rule of thumb:** anything driven by time → `LA.countdown`. Anything driven by a server →
+APNs. Anything driven by the user while the app is open → `LiveActivity.update`.
 
 ---
 
 ## App Group storage
 
-The app and the widget extension are separate processes. Anything too big for the 4 KiB
-content state goes through the App Group:
+The app and the widget extension are separate processes. The layout travels inside the
+4 KiB ActivityKit content state; anything bigger goes through the shared App Group:
 
 ```dart
 await LiveActivityStore.write('order', {'id': 1042, 'items': items});
 final order = await LiveActivityStore.readMap('order');
 
 LiveActivityStore.changes.listen((key) => print('$key changed'));
-LiveActivityStore.watch('order').listen((value) => print(value));
+LiveActivityStore.watch('order').listen(print);
 ```
 
-Changes are broadcast with a Darwin notification, the only cross-process signal available
-to an app extension. On the Swift side, use `LiveActivityAppGroup` from either target.
-
----
-
-## Background and push updates
-
-See [`doc/background_and_push.md`](doc/background_and_push.md) for the full treatment.
-The short version:
-
-- **App in the foreground** — update as often as you like (about once every 1–2 s is the
-  practical floor before iOS coalesces).
-- **App backgrounded** — you get seconds, not minutes. Background modes, BGTaskScheduler
-  and silent pushes are all unreliable for keeping an activity current.
-- **App terminated** — you cannot update at all from Dart.
-- **Use APNs** whenever the truth lives on a server, or the activity must stay correct for
-  more than a few minutes: deliveries, sports scores, ride-hailing, flight status.
-- **Use `LA.countdown`** whenever the only thing changing is time. It needs no updates in
-  any of the states above.
-
-```dart
-final handle = await LiveActivity.show(id: 'order', enablePush: true, /* … */);
-LiveActivity.pushTokens.listen((t) => api.registerActivityToken(t.id, t.token));
-
-// iOS 17.2+: start an activity from the server, with the app never launched.
-final startToken = await LiveActivity.pushToStartToken();
-```
+Changes are broadcast with a Darwin notification — the only cross-process signal available
+to an app extension. From Swift, use `LiveActivityAppGroup` in either target.
 
 ---
 
 ## Performance
 
-- **Payload size** — nulls are never serialized, colors are `#RRGGBB`, insets are 4-element
-  arrays. A realistic four-region layout lands around 500–900 bytes against ActivityKit's
-  4096-byte ceiling, and `LiveActivity` throws `payload_too_large` before iOS can.
-- **Rendering** — Swift decodes with `JSONSerialization` into dictionaries rather than
+Live Activities run in a memory-capped extension and redraw often, so the package is built
+around that:
+
+- **Small payloads.** Nulls are never serialized, colours are `#RRGGBB`, insets are
+  4-element arrays. A realistic four-region layout is 500–900 bytes against ActivityKit's
+  4096-byte ceiling — and `LiveActivity` throws `payload_too_large` in Dart, naming the
+  activity, before iOS can reject it silently.
+- **Fast decode.** Swift decodes with `JSONSerialization` into dictionaries rather than
   `Codable`; for a heterogeneous, deeply optional tree redrawn every second that is
   measurably cheaper.
-- **Memory** — widget extensions are jetsam-killed long before apps are. Images are
-  downsampled to their display size before decoding, and network images are fetched by the
-  *app*, never by the extension.
-- **Frequent updates** — put anything time-based in `LA.countdown`, and push only the
-  values that genuinely change. That is what makes a 1 s workout tracker viable.
+- **Low memory.** Images are downsampled to their display size before decoding, and remote
+  images are fetched by the *app*, never by the extension (which is jetsam-killed long
+  before your app would be).
+- **Frequent updates.** Put anything time-based in `LA.countdown` and push only values
+  that genuinely change. That is what makes a 1–2 second workout tracker viable.
 
 ---
 
 ## Limitations
 
-This package renders a fixed component set, by design. It does **not** support:
+Read this section before you design your UI. These are platform constraints, not a backlog:
 
-- **Arbitrary Flutter widgets.** Apple does not permit a Flutter engine inside a widget
-  extension. Nothing can change this; it is a platform constraint, not a missing feature.
-- **WebView, video, canvas, or custom painters.**
-- **Custom gestures.** Live Activities allow a tap (deep link) and, on iOS 17+, App
-  Intent buttons. Nothing else — no drags, no scrolling.
-- **Complex animations.** iOS animates content-state transitions itself; you cannot drive
-  keyframes, and long or elaborate animations are dropped.
-- **Arbitrary fonts.** System fonts only (custom fonts would have to be bundled into the
-  extension by hand).
-- **Live Activities on Android or the web.** There is no equivalent API.
-- **Payloads over 4 KiB**, more than a handful of concurrent activities, or unlimited
-  update frequency — all iOS budgets.
+- ❌ **Arbitrary Flutter widgets.** Apple does not permit a Flutter engine inside a widget
+  extension. No package can do this — the UI must be SwiftUI.
+- ❌ **WebView, video, `Canvas`, `CustomPainter`.**
+- ❌ **Custom gestures.** A Live Activity supports a tap (deep link) and, on iOS 17+, App
+  Intent buttons. No drags, no scrolling, no swipes.
+- ❌ **Complex animations.** iOS animates content-state transitions itself; you cannot
+  drive keyframes, and elaborate animations are dropped.
+- ❌ **Custom fonts.** System fonts only, unless you bundle fonts into the extension by hand.
+- ❌ **Android / web / desktop.** No equivalent OS feature exists.
+- ⚠️ **Budgets:** 4 KiB per content state, a handful of concurrent activities, a limited
+  update rate, an 8-hour activity lifetime and 12-hour Lock Screen lifetime.
+
+---
+
+## Troubleshooting
+
+**Nothing appears on screen.** Check in order: `LiveActivity.support()` returns
+`canStart: true`; both targets have the *same* App Group ticked in Signing & Capabilities;
+`NSSupportsLiveActivities` is in `ios/Runner/Info.plist`; the extension is embedded in the
+app; you passed at least one region to `show`.
+
+**`LiveActivityException(disabled)`.** The user turned Live Activities off for your app in
+Settings. Re-check with `LiveActivity.support(refresh: true)`.
+
+**`LiveActivityException(payload_too_large)`.** Your tree serialized past 4 KiB. Shorten
+text, drop network images, or move per-second values into `LA.countdown`.
+
+**`LiveActivityException(app_group_missing)`.** The App Group capability isn't attached, or
+the two targets disagree. Re-run `dart run live_activity_kit:setup` and re-check Xcode.
+
+**Updates stop after a while.** You are over iOS's update budget, or the activity hit the
+8-hour cap. Move time-based values to `LA.countdown`; consider `--frequent-updates`.
+
+**The UI freezes at an old value.** Your app was suspended. Set `staleAfter` so iOS dims
+it, and move to APNs push updates.
+
+**The widget extension won't build.** Open `ios/Runner.xcworkspace` (not `.xcodeproj`) and
+confirm the `LiveActivityKitWidget` target has a development team and a deployment target
+of 16.1 or higher.
 
 ---
 
 ## FAQ
 
-**Why can't I just use Flutter widgets?**
-The Live Activity UI is rendered by a system process, out of your app, under tight memory
-and CPU limits. Only WidgetKit/SwiftUI views are allowed there. Every Flutter Live
-Activity package has this constraint.
-
 **Do I have to write any Swift?**
-No. `dart run live_activity_kit:setup` generates the extension and the renderer. You only
-touch Swift if you want to add components of your own.
+No. `setup` generates the extension and the renderer. Swift is only involved if you choose
+to add your own components.
 
-**Can I add my own component?**
-Yes: add a `LANode` subclass in Dart, a case in `LANode.parse` and a view in
-`LANodeRenderer.swift`, then re-run setup to sync the extension copy.
+**Can I use my existing Flutter widgets in the Live Activity?**
+No — and neither can any other package. The Live Activity UI is rendered by a system
+process outside your app, where only WidgetKit/SwiftUI views are allowed.
 
 **Does it work in the simulator?**
-Live Activities work in the iOS 17+ simulator. On iOS 16 they need a real device.
+Yes on iOS 17+. On iOS 16 you need a real device.
 
-**Nothing appears on screen.**
-Check, in order: `LiveActivity.support()` reports `canStart`; both targets have the same
-App Group; `NSSupportsLiveActivities` is in `ios/Runner/Info.plist`; the widget extension
-is embedded in the app; you passed at least one region.
+**Can I add my own component?**
+Yes: add a `LANode` subclass in Dart, a case in `LANode.parse`, and a view in
+`LANodeRenderer.swift`, then re-run setup to sync the extension's copy.
 
-**How many activities can I run at once?**
-iOS does not document a hard number; in practice a handful. `show` throws
+**Can I run several activities at once?**
+Yes — one per `id`. iOS doesn't document a hard limit; `show` throws
 `too_many_activities` when the system refuses.
 
-**Can I start an activity from a push notification?**
-On iOS 17.2+, yes — see `LiveActivity.pushToStartToken()`.
+**Can I start a Live Activity from a push notification?**
+On iOS 17.2+, yes — `LiveActivity.pushToStartToken()`.
 
-**Can the user turn this off?**
-Yes, per-app in Settings. `support().areActivitiesEnabled` reflects it; re-check with
-`support(refresh: true)`.
+**Does this support Android?**
+No. Live Activities are an iOS feature with no Android equivalent. Calls are safe no-ops
+so your codebase stays single-source.
+
+**How do I test without a device?**
+Set `LiveActivityPlatform.instance = YourFakePlatform()`. The platform interface is public
+so widget and unit tests never need hardware.
 
 ---
 
-## Example
+## Example app
 
-`example/` contains four complete demos, each showing start → update → end:
+`example/` contains four complete demos, each with start → update → end:
 
-| Demo | Shape it demonstrates |
+| Demo | What it demonstrates |
 |---|---|
-| Meal reminder | Ambient info; started once, countdown does the rest |
-| Running tracker | High-frequency updates with a system stopwatch |
-| Delivery tracking | Server-driven, with APNs push tokens and per-stage alerts |
-| Meeting countdown | Fire-and-forget; zero updates after start |
+| **Meal reminder** | Ambient info; started once, `LA.countdown` does the rest |
+| **Running tracker** | 2-second updates with a system stopwatch and progress ring |
+| **Delivery tracking** | APNs push tokens, per-stage alerts, deep links, gradients |
+| **Meeting countdown** | Fire-and-forget; zero updates after start |
 
 ```bash
 cd example
@@ -440,20 +637,29 @@ flutter run
 ## Testing
 
 ```bash
-flutter test                 # Dart: DSL, serialization, layout, facade
+flutter test                                   # DSL, JSON schema, layout, facade
+cd example && flutter test integration_test    # on-device ActivityKit tests
 ```
 
-Swift decoder and renderer tests live in `templates/ios/Tests/LANodeTests.swift`; add the
-file to a unit-test target that compiles the generated widget sources and run ⌘U. The
-Dart and Swift suites assert against the same JSON payloads, which is what keeps the two
-halves of the schema honest.
-
-For integration testing, drive the plugin through
-`LiveActivityPlatform.instance = YourFakePlatform()` — the platform interface is public
-precisely so that widget and integration tests never need a device.
+Swift decoder and renderer tests live in `templates/ios/Tests/LANodeTests.swift` — add the
+file to a unit-test target that compiles the generated widget sources and run ⌘U. The Dart
+and Swift suites assert against the same JSON payloads, which is what keeps both halves of
+the schema honest.
 
 ---
+
+## Contributing
+
+Issues and pull requests are welcome at
+[github.com/NIAnup/live_activity_kit](https://github.com/NIAnup/live_activity_kit).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub>Keywords: flutter live activities, ios dynamic island flutter, activitykit flutter
+plugin, flutter lock screen widget, widgetkit flutter, flutter ios widget extension,
+live activity package, flutter delivery tracking ui, flutter workout live activity,
+dynamic island package, flutter apns live activity push.</sub>
