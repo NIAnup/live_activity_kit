@@ -205,6 +205,11 @@ public struct LACountdownNode {
     }
 
     /// The SwiftUI date style that ticks without a payload update.
+    ///
+    /// `Text.DateStyle` is iOS 14+, while the pod itself deploys to 13.0 so it
+    /// can be added to apps that predate Live Activities. Only the renderer
+    /// (16.1+) ever reads this, so gating the property costs nothing.
+    @available(iOS 14.0, *)
     public var textStyle: Text.DateStyle {
         switch style {
         case .timer: return .timer

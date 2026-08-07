@@ -2,7 +2,7 @@ name: live_activity_kit
 description: >-
   Build iOS Live Activities and Dynamic Island widgets from Dart. Component DSL,
   SwiftUI renderer, ActivityKit, App Groups and APNs push updates — no Swift code.
-version: 0.1.0
+version: 1.0.0
 repository: https://github.com/NIAnup/live_activity_kit
 issue_tracker: https://github.com/NIAnup/live_activity_kit/issues
 topics:

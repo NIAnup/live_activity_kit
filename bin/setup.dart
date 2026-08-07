@@ -12,6 +12,16 @@ import 'dart:isolate';
 const _defaultTargetName = 'LiveActivityKitWidget';
 const _defaultDeploymentTarget = '16.1';
 
+/// Floor for the *app* target.
+///
+/// The plugin pod is iOS 13 because its shared Swift references SwiftUI types
+/// (`Color`, `Font.Weight`, `TextAlignment`) in stored properties. Flutter's
+/// default Podfile leaves the platform line commented out, which makes
+/// CocoaPods assume 12.0 and fail resolution with "requires a higher minimum
+/// deployment target" — so setup raises it rather than letting every consumer
+/// hit that on their first `flutter run`.
+const _minimumAppDeploymentTarget = '13.0';
+
 Future<void> main(List<String> arguments) async {
   final options = _Options.parse(arguments);
   if (options.help) {
@@ -120,7 +130,10 @@ Future<void> main(List<String> arguments) async {
   }
   _ok('patched Runner/Info.plist');
 
-  // 4. Xcode project -------------------------------------------------------
+  // 4. Podfile platform ----------------------------------------------------
+  _ensurePodfilePlatform(File('${iosDir.path}/Podfile'));
+
+  // 5. Xcode project -------------------------------------------------------
   if (options.skipXcode) {
     _warn('Skipped Xcode project changes (--no-xcode). Add the target manually.');
   } else {
@@ -133,6 +146,7 @@ Future<void> main(List<String> arguments) async {
         appGroup,
         options.deploymentTarget,
         widgetDirName,
+        _minimumAppDeploymentTarget,
       ],
       workingDirectory: iosDir.path,
     );
@@ -315,6 +329,59 @@ void _writeIfSafe(File file, String contents, {required bool force}) {
   }
   file.writeAsStringSync(contents);
   _ok('wrote $name');
+}
+
+/// Raises `platform :ios` in the Podfile to [_minimumAppDeploymentTarget].
+///
+/// Flutter scaffolds the line commented out, and a commented line means
+/// CocoaPods silently assumes 12.0 — which then fails to resolve this pod with
+/// a message that points at the plugin rather than at the Podfile.
+void _ensurePodfilePlatform(File podfile) {
+  if (!podfile.existsSync()) {
+    _warn('ios/Podfile not found — set platform :ios, '
+        "'$_minimumAppDeploymentTarget' manually.");
+    return;
+  }
+
+  final contents = podfile.readAsStringSync();
+  final active = RegExp(
+    r"^\s*platform\s+:ios\s*,\s*'([\d.]+)'",
+    multiLine: true,
+  ).firstMatch(contents);
+
+  if (active != null) {
+    final current = double.tryParse(active.group(1)!) ?? 0;
+    if (current >= double.parse(_minimumAppDeploymentTarget)) {
+      _ok('Podfile already targets iOS ${active.group(1)}');
+      return;
+    }
+    podfile.writeAsStringSync(contents.replaceRange(
+      active.start,
+      active.end,
+      "platform :ios, '$_minimumAppDeploymentTarget'",
+    ));
+    _ok('raised Podfile platform ${active.group(1)} → '
+        '$_minimumAppDeploymentTarget');
+    return;
+  }
+
+  final commented = RegExp(
+    r"^#\s*platform\s+:ios\s*,\s*'[\d.]+'",
+    multiLine: true,
+  ).firstMatch(contents);
+
+  if (commented != null) {
+    podfile.writeAsStringSync(contents.replaceRange(
+      commented.start,
+      commented.end,
+      "platform :ios, '$_minimumAppDeploymentTarget'",
+    ));
+  } else {
+    podfile.writeAsStringSync(
+      "platform :ios, '$_minimumAppDeploymentTarget'\n$contents",
+    );
+  }
+  _ok('set Podfile platform to iOS $_minimumAppDeploymentTarget');
 }
 
 void _addAppGroup(File entitlements, String appGroup) {

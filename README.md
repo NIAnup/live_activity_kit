@@ -26,8 +26,31 @@ progress.
 
 ## What Live Activities look like on iOS
 
-A Live Activity has **one activity, four presentations**. iOS picks which to show based on
-where the user is looking — and this package lets you give each one its own component tree.
+### Rendered by this package
+
+<img src="https://raw.githubusercontent.com/NIAnup/live_activity_kit/main/doc/images/real-dynamic-island.jpg" width="620" alt="Dynamic Island rendered by live_activity_kit showing a bicycle SF Symbol and a 12 min ETA">
+
+That is the example app running on an iOS 26 simulator. No Swift was written — the whole
+thing is these six lines of Dart:
+
+```dart
+await LiveActivity.show(
+  id: 'order-1042',
+  compactLeading: LA.symbol('bicycle', color: Color(0xFF0A84FF)),
+  compactTrailing: LA.text('12 min', size: 13, color: Color(0xFF0A84FF)),
+  minimal: LA.symbol('bicycle', color: Color(0xFF0A84FF)),
+  lockScreen: LA.column([
+    LA.text('Out for delivery', size: 20, weight: FontWeight.bold),
+    LA.progress(0.7, tint: Color(0xFF0A84FF)),
+  ], spacing: 6),
+);
+```
+
+### The four presentations
+
+A Live Activity is **one activity with four presentations**. iOS picks which to show based
+on where the user is looking — and this package lets you give each one its own component
+tree. The images below illustrate the iOS presentations themselves.
 
 ### Dynamic Island — minimal, compact, expanded
 
@@ -620,6 +643,24 @@ it, and move to APNs push updates.
 **The widget extension won't build.** Open `ios/Runner.xcworkspace` (not `.xcodeproj`) and
 confirm the `LiveActivityKitWidget` target has a development team and a deployment target
 of 16.1 or higher.
+
+**`The plugin "live_activity_kit" requires a higher minimum iOS deployment version`.** Your
+Podfile still targets iOS 12. `setup` raises it to 13.0 automatically — re-run
+`dart run live_activity_kit:setup`, or set `platform :ios, '13.0'` in `ios/Podfile`
+yourself and run `pod install`.
+
+**`Cycle inside Runner; building could produce unreliable results`.** Xcode appended
+"Embed Foundation Extensions" after Flutter's "Thin Binary" phase, and the two form a
+cycle. `setup` reorders them; if you added the target by hand, drag "Embed Foundation
+Extensions" above "Thin Binary" in Runner → Build Phases.
+
+**`Failed to create app extension placeholder` on install.** The extension's Info.plist has
+no `CFBundleVersion` / `CFBundleShortVersionString`, because `$(FLUTTER_BUILD_NUMBER)` did
+not resolve. `setup` points the target at `Flutter/Generated.xcconfig` to fix this — re-run
+it after a `flutter pub get`.
+
+**`ld: framework 'Flutter' not found`.** Not a package problem: your Flutter SDK's
+`Flutter.xcframework` is missing a slice binary. Run `flutter precache --ios --force`.
 
 ---
 
