@@ -36,7 +36,8 @@ class _HomePageState extends State<HomePage> {
   late final List<LiveActivityDemo> _demos = [
     MealReminderDemo(),
     RunningTrackerDemo(),
-    DeliveryTrackingDemo(onPushToken: (token) => _log('push token ${_short(token)}')),
+    DeliveryTrackingDemo(
+        onPushToken: (token) => _log('push token ${_short(token)}')),
     MeetingCountdownDemo(),
   ];
 
@@ -100,7 +101,8 @@ class _HomePageState extends State<HomePage> {
       _log('${e.code}: ${e.message}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red.shade900),
+        SnackBar(
+            content: Text(e.message), backgroundColor: Colors.red.shade900),
       );
     }
   }
@@ -332,9 +334,7 @@ class _EventLog extends StatelessWidget {
                 child: Text(
                   event,
                   style: const TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Menlo',
-                      color: Colors.white70),
+                      fontSize: 12, fontFamily: 'Menlo', color: Colors.white70),
                 ),
               ),
         ],

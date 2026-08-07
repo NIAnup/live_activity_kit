@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'live_activity_kit'
-  s.version          = '0.1.0'
+  s.version          = '1.0.0'
   s.summary          = 'Universal Live Activities & Dynamic Island framework for Flutter.'
   s.description      = <<-DESC
 Renders Dart-declared component trees as SwiftUI inside a Live Activity widget

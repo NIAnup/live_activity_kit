@@ -2,7 +2,7 @@ PODS:
   - Flutter (1.0.0)
   - integration_test (0.0.1):
     - Flutter
-  - live_activity_kit (0.1.0):
+  - live_activity_kit (1.0.0):
     - Flutter
 
 DEPENDENCIES:
@@ -21,7 +21,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   integration_test: 4a889634ef21a45d28d50d622cf412dc6d9f586e
-  live_activity_kit: ddf1613fb400cc705360cfe2465ebb7d2a7874ea
+  live_activity_kit: 17ec3c2aee03fad0e635e27b8caecc17c2040a9a
 
 PODFILE CHECKSUM: e6b0deee0e342c38d4775406a9ec5da8a8e8c9f6
 

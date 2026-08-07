@@ -9,6 +9,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # The constraint a real user would write, so the example doubles as copyable
+  # documentation.
+  live_activity_kit: ^1.0.0
+
+# Resolve that constraint against this repository rather than pub.dev.
+#
+# Without the override the example cannot resolve at all until 1.0.0 is
+# published, and once it is, the example would silently build against the
+# released archive instead of the working tree — so a regression introduced here
+# would not show up until after it shipped.
+dependency_overrides:
   live_activity_kit:
     path: ../
 
