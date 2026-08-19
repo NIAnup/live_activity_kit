@@ -165,16 +165,23 @@ class LiveActivitySupport {
     required this.areActivitiesEnabled,
     required this.supportsDynamicIsland,
     required this.systemVersion,
+    this.supportsLiveUpdates = false,
   });
 
-  /// iOS 16.1+ and the app is configured with `NSSupportsLiveActivities`.
+  /// iOS 16.1+ with `NSSupportsLiveActivities`, or Android API 26+ (notification
+  /// channels / Live Updates).
   final bool isSupported;
 
-  /// The user has not switched Live Activities off for your app in Settings.
+  /// The user has not switched Live Activities (iOS) or notifications (Android)
+  /// off for your app in Settings.
   final bool areActivitiesEnabled;
 
-  /// iPhone 14 Pro and later.
+  /// iPhone 14 Pro and later. Always `false` on Android.
   final bool supportsDynamicIsland;
+
+  /// Android 16+ Live Updates (promoted ongoing / status-bar chip). Always
+  /// `false` on iOS.
+  final bool supportsLiveUpdates;
 
   final String systemVersion;
 
@@ -186,6 +193,7 @@ class LiveActivitySupport {
         isSupported: json['isSupported'] == true,
         areActivitiesEnabled: json['areActivitiesEnabled'] == true,
         supportsDynamicIsland: json['supportsDynamicIsland'] == true,
+        supportsLiveUpdates: json['supportsLiveUpdates'] == true,
         systemVersion: json['systemVersion']?.toString() ?? '',
       );
 
@@ -193,13 +201,14 @@ class LiveActivitySupport {
     isSupported: false,
     areActivitiesEnabled: false,
     supportsDynamicIsland: false,
+    supportsLiveUpdates: false,
     systemVersion: '',
   );
 
   @override
   String toString() => 'LiveActivitySupport(supported: $isSupported, '
       'enabled: $areActivitiesEnabled, island: $supportsDynamicIsland, '
-      'iOS $systemVersion)';
+      'liveUpdates: $supportsLiveUpdates, $systemVersion)';
 }
 
 /// Thrown for every failure surfaced by the native side.

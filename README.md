@@ -1,20 +1,22 @@
 # live_activity_kit
 
-**Build iOS Live Activities and Dynamic Island widgets in Flutter — entirely from Dart.
-No Swift, no manual Xcode setup.**
+**Build iOS Live Activities and Dynamic Island widgets, plus Android Live Updates,
+in Flutter — entirely from Dart. No Swift, no manual Xcode setup.**
 
 [![pub package](https://img.shields.io/pub/v/live_activity_kit.svg)](https://pub.dev/packages/live_activity_kit)
-[![platform](https://img.shields.io/badge/platform-iOS%2016.1%2B-lightgrey.svg)](https://pub.dev/packages/live_activity_kit)
+[![platform](https://img.shields.io/badge/platform-iOS%2016.1%2B%20%7C%20Android%2026%2B-lightgrey.svg)](https://pub.dev/packages/live_activity_kit)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 `live_activity_kit` is a Flutter plugin for **iOS Live Activities**, the **Dynamic
-Island**, and **Lock Screen widgets**, powered by **ActivityKit** and **WidgetKit**. You
-describe the UI with a Flutter-like component DSL in Dart; the package serializes it to a
-compact JSON layout tree and a bundled **SwiftUI** renderer draws it inside a widget
-extension it generates for you.
+Island**, and **Lock Screen widgets**, powered by **ActivityKit** and **WidgetKit**, and
+for **Android Live Updates** (promoted ongoing notifications on Android 16+) plus
+custom ongoing notifications on API 26+. You describe the UI with a Flutter-like
+component DSL in Dart; the package serializes it to a compact JSON layout tree.
 
 ```
-Your Dart code  →  JSON layout tree  →  MethodChannel  →  ActivityKit  →  SwiftUI renderer
+Your Dart code  →  JSON layout tree  →  MethodChannel
+  iOS:     ActivityKit → SwiftUI renderer
+  Android: NotificationManager → RemoteViews / ProgressStyle Live Updates
 ```
 
 It is **not** tied to one use case. The same components build a food delivery tracker, a
@@ -208,12 +210,20 @@ That's the whole API surface for most apps: `show`, `update`, `end`.
 | | |
 |---|---|
 | **iOS** | 16.1+ (Lock Screen), iPhone 14 Pro and later for the Dynamic Island |
-| **Xcode** | 15 or newer |
+| **Android** | API 26+ ongoing notifications; Android 16+ Live Updates (status bar chip / lock screen) when the system promotes them |
+| **Xcode** | 15 or newer (iOS) |
 | **Flutter** | 3.27 or newer |
-| **Device** | Real device required on iOS 16; the iOS 17+ simulator works |
+| **Device** | Real device required on iOS 16; the iOS 17+ simulator works. Android emulator is fine. |
 
-Other platforms are safe no-ops: `LiveActivity.support()` reports `isSupported: false` and
-calls throw `LiveActivityException('unsupported', …)`, so one codebase ships everywhere.
+Web and desktop remain safe no-ops: `LiveActivity.support()` reports `isSupported: false`
+and calls throw `LiveActivityException('unsupported', …)`, so one codebase ships everywhere.
+
+On Android, `show()` asks for `POST_NOTIFICATIONS` (API 33+) and posts an ongoing
+notification. `LA.countdown` / `LA.stopwatch` map to a system `Chronometer` (ticks
+without Dart updates). `LA.progress` becomes a progress bar, and on Android 16+ a
+`Notification.ProgressStyle` Live Update when the OS allows promotion. Dynamic Island
+regions are ignored; the lock-screen tree is what is drawn. APNs push-to-start is iOS
+only.
 
 ### What `setup` does for you
 
@@ -612,7 +622,11 @@ Read this section before you design your UI. These are platform constraints, not
 - ❌ **Complex animations.** iOS animates content-state transitions itself; you cannot
   drive keyframes, and elaborate animations are dropped.
 - ❌ **Custom fonts.** System fonts only, unless you bundle fonts into the extension by hand.
-- ❌ **Android / web / desktop.** No equivalent OS feature exists.
+- ❌ **Pixel-identical Android UI.** Android has no Dynamic Island and no SwiftUI
+  widget extension. The same Dart tree is flattened into an ongoing notification
+  (RemoteViews +, on Android 16, Live Updates). Nested stacks are summarized;
+  SF Symbols become the app's small icon, not Apple glyphs.
+- ❌ **Web / desktop.** No equivalent OS feature exists.
 - ⚠️ **Budgets:** 4 KiB per content state, a handful of concurrent activities, a limited
   update rate, an 8-hour activity lifetime and 12-hour Lock Screen lifetime.
 
@@ -620,13 +634,17 @@ Read this section before you design your UI. These are platform constraints, not
 
 ## Troubleshooting
 
+**Nothing appears on Android.** Grant notification permission. `LiveActivity.support()`
+must report `canStart: true`. Check the shade / lock screen for an ongoing notification.
+Live Updates (status-bar chip) need Android 16+ and a layout that includes `LA.progress`.
+
 **Nothing appears on screen.** Check in order: `LiveActivity.support()` returns
 `canStart: true`; both targets have the *same* App Group ticked in Signing & Capabilities;
 `NSSupportsLiveActivities` is in `ios/Runner/Info.plist`; the extension is embedded in the
 app; you passed at least one region to `show`.
 
-**`LiveActivityException(disabled)`.** The user turned Live Activities off for your app in
-Settings. Re-check with `LiveActivity.support(refresh: true)`.
+**`LiveActivityException(disabled)`.** The user turned Live Activities off (iOS) or
+notifications off (Android) for this app. Re-check with `LiveActivity.support(refresh: true)`.
 
 **`LiveActivityException(payload_too_large)`.** Your tree serialized past 4 KiB. Shorten
 text, drop network images, or move per-second values into `LA.countdown`.
@@ -689,8 +707,10 @@ Yes — one per `id`. iOS doesn't document a hard limit; `show` throws
 On iOS 17.2+, yes — `LiveActivity.pushToStartToken()`.
 
 **Does this support Android?**
-No. Live Activities are an iOS feature with no Android equivalent. Calls are safe no-ops
-so your codebase stays single-source.
+Yes. The same `LiveActivity.show` / `update` / `end` API posts an ongoing notification
+on API 26+. On Android 16+ it requests Live Updates (`setRequestPromotedOngoing`) when
+the layout includes progress. There is no Dynamic Island. `LiveActivity.support()`
+reports `supportsLiveUpdates` when the system will promote the notification.
 
 **How do I test without a device?**
 Set `LiveActivityPlatform.instance = YourFakePlatform()`. The platform interface is public
@@ -724,6 +744,8 @@ flutter test                                   # DSL, JSON schema, layout, facad
 cd example && flutter test integration_test    # on-device ActivityKit tests
 ```
 
+Android layout flattening tests live in `android/src/test/` (`LayoutFlattenerTest`).
+
 Swift decoder and renderer tests live in `templates/ios/Tests/LANodeTests.swift` — add the
 file to a unit-test target that compiles the generated widget sources and run ⌘U. The Dart
 and Swift suites assert against the same JSON payloads, which is what keeps both halves of
@@ -745,4 +767,5 @@ MIT — see [LICENSE](LICENSE).
 <sub>Keywords: flutter live activities, ios dynamic island flutter, activitykit flutter
 plugin, flutter lock screen widget, widgetkit flutter, flutter ios widget extension,
 live activity package, flutter delivery tracking ui, flutter workout live activity,
-dynamic island package, flutter apns live activity push.</sub>
+dynamic island package, flutter apns live activity push, android live updates flutter,
+android ongoing notification flutter.</sub>

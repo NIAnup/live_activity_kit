@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Android.** `LiveActivity.show` / `update` / `end` post an ongoing notification
+  (API 26+) built from the same Dart layout JSON iOS uses. Lock-screen copy, progress
+  bars and `LA.countdown` / `LA.stopwatch` (system `Chronometer`) are mapped onto
+  `RemoteViews`. On Android 16+ the plugin requests Live Updates via
+  `Notification.ProgressStyle` and `setRequestPromotedOngoing` when the layout has
+  progress. `POST_NOTIFICATIONS` is requested on first `show()`. Shared store uses
+  `SharedPreferences`. APNs / push-to-start remain iOS-only.
+- `LiveActivitySupport.supportsLiveUpdates` so callers can distinguish Dynamic Island
+  from Android Live Updates without parsing `systemVersion`.
+
 ## 1.0.0
 
 First release verified end-to-end on a device. Fixes four bugs that made 0.1.0

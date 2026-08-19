@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_activity_channel_name">Live activities</string>
+    <string name="live_activity_channel_description">Ongoing status for deliveries, workouts, and timers</string>
+</resources>

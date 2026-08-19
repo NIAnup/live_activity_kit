@@ -35,7 +35,8 @@ abstract final class LiveActivity {
 
   static LiveActivitySupport? _support;
 
-  /// Whether Live Activities can run on this device right now.
+  /// Whether Live Activities (iOS) or Live Updates / ongoing notifications
+  /// (Android) can run on this device right now.
   ///
   /// Cached after the first call; pass `refresh: true` after sending the user
   /// to Settings, since they can disable activities per-app at any time.

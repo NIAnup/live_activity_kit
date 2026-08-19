@@ -24,11 +24,13 @@ class SupportInfo {
     required this.areActivitiesEnabled,
     required this.supportsDynamicIsland,
     required this.systemVersion,
+    this.supportsLiveUpdates = false,
   });
 
   bool isSupported;
   bool areActivitiesEnabled;
   bool supportsDynamicIsland;
+  bool supportsLiveUpdates;
   String systemVersion;
 }
 

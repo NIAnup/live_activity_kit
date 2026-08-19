@@ -9,6 +9,13 @@ pubspec.lock            # a library must not pin its consumers' versions
 .idea/
 .vscode/
 
+# Android
+android/.gradle/
+android/local.properties
+example/android/.gradle/
+example/android/local.properties
+example/android/captures/
+
 # iOS
 ios/Pods/
 ios/.symlinks/
