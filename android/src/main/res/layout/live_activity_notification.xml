@@ -10,7 +10,7 @@
         android:id="@+id/la_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="#FFFFFFFF"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="16sp"
         android:textStyle="bold" />
 
@@ -19,7 +19,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="2dp"
-        android:textColor="#CCFFFFFF"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="14sp" />
 
     <Chronometer
@@ -27,7 +27,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:paddingTop="4dp"
-        android:textColor="#FFFFFFFF"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="20sp"
         android:textStyle="bold"
         android:visibility="gone" />
@@ -46,7 +46,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:paddingTop="2dp"
-        android:textColor="#99FFFFFF"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="12sp"
         android:visibility="gone" />
 </LinearLayout>

@@ -41,7 +41,11 @@ internal object LayoutFlattener {
                 progress = p
                 progressLabel = label
             }
-            if (countdownUntil == null && until != null) {
+            // A `time` countdown is a static wall-clock label, so it cannot drive the
+            // Chronometer. Let a ticking countdown later in the tree replace it.
+            if (until != null &&
+                (countdownUntil == null || (countdownStyle == "time" && style != "time"))
+            ) {
                 countdownUntil = until
                 countdownStyle = style ?: "timer"
                 countdownPrefix = prefix

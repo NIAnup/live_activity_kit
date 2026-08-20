@@ -67,4 +67,26 @@ class LayoutFlattenerTest {
         assertEquals("distance 4.21 km", model.title)
         assertEquals("live", model.body)
     }
+
+    @Test
+    fun tickingCountdownWinsOverAStaticTimeLabel() {
+        // The meeting-countdown layout puts a `time` (wall-clock) countdown first and
+        // the ticking one below it; the Chronometer must use the ticking one.
+        val json = """
+            {
+              "regions": {
+                "lockScreen": {
+                  "type": "column",
+                  "children": [
+                    { "type": "countdown", "until": 1710000000.0, "style": "time" },
+                    { "type": "countdown", "until": 1710000600.0 }
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+        val model = LayoutFlattener.flatten(json)
+        assertEquals("timer", model.countdownStyle)
+        assertEquals(1710000600.0, model.countdownUntilEpochSec!!, 0.01)
+    }
 }

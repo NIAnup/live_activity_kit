@@ -212,18 +212,43 @@ That's the whole API surface for most apps: `show`, `update`, `end`.
 | **iOS** | 16.1+ (Lock Screen), iPhone 14 Pro and later for the Dynamic Island |
 | **Android** | API 26+ ongoing notifications; Android 16+ Live Updates (status bar chip / lock screen) when the system promotes them |
 | **Xcode** | 15 or newer (iOS) |
-| **Flutter** | 3.27 or newer |
+| **Flutter** | 3.32 or newer — the Android side needs `compileSdk 36`, which Flutter supplies from 3.32 |
 | **Device** | Real device required on iOS 16; the iOS 17+ simulator works. Android emulator is fine. |
+
+> **Android `compileSdk`.** This plugin compiles against SDK 36. If your app pins an
+> older `compileSdk`, Gradle fails with *"dependency requires compileSdk 36"* — set
+> `compileSdk = 36` in `android/app/build.gradle.kts`, or let Flutter 3.32+ supply it
+> via `flutter.compileSdkVersion`.
 
 Web and desktop remain safe no-ops: `LiveActivity.support()` reports `isSupported: false`
 and calls throw `LiveActivityException('unsupported', …)`, so one codebase ships everywhere.
 
 On Android, `show()` asks for `POST_NOTIFICATIONS` (API 33+) and posts an ongoing
-notification. `LA.countdown` / `LA.stopwatch` map to a system `Chronometer` (ticks
-without Dart updates). `LA.progress` becomes a progress bar, and on Android 16+ a
+notification. `LA.progress` becomes a progress bar, and on Android 16+ a
 `Notification.ProgressStyle` Live Update when the OS allows promotion. Dynamic Island
 regions are ignored; the lock-screen tree is what is drawn. APNs push-to-start is iOS
 only.
+
+`LA.countdown` / `LA.stopwatch` map to a system `Chronometer` that ticks without Dart
+updates — **but only when the same region has no `LA.progress`.** A layout with progress
+is rendered by the system's `ProgressStyle` template on Android 16+, which replaces the
+plugin's custom view, so the countdown and the progress `label` are not drawn. Put the
+countdown in a progress-free region if it must tick on Android. A `LACountdownStyle.time`
+countdown is a static wall-clock label and never drives the `Chronometer`.
+
+#### Known Android limitations
+
+- **Activity state does not survive the app process.** Running activities are tracked in
+  memory. If Android kills the process, the ongoing notification stays on screen but
+  `activities()` returns nothing and `update` / `end` throw `not_found`, so the leftover
+  notification cannot be addressed. iOS restores activities across launches; Android does
+  not. Track long-running work with your own persistence.
+- **Deep links are dropped on a cold tap.** Tapping an activity launches the app, but if
+  the process was not already running the URL is not delivered to `LiveActivity.deepLinks`.
+- **`enablePush` is ignored.** There is no APNs equivalent; drive Android updates from your
+  own push handler by calling `update()`.
+- **Notification ids are 16-bit.** Two activity ids whose hashes collide will overwrite
+  each other's notification.
 
 ### What `setup` does for you
 
