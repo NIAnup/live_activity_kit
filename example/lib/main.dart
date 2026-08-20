@@ -174,19 +174,25 @@ class _SupportBanner extends StatelessWidget {
       _ when !support.isSupported => (
           Colors.red,
           Icons.error_outline,
-          'Live Activities need iOS 16.1+ — this device reports ${support.systemVersion}.',
+          'Live Activities need iOS 16.1+ or Android API 26+. This device reports ${support.systemVersion}.',
         ),
       _ when !support.areActivitiesEnabled => (
           Colors.orange,
           Icons.warning_amber_outlined,
-          'Live Activities are switched off for this app in Settings → live_activity_kit.',
+          support.systemVersion.startsWith('Android')
+              ? 'Notifications are off for this app. Enable them in Settings, then refresh.'
+              : 'Live Activities are switched off for this app in Settings → live_activity_kit.',
         ),
       _ => (
           Colors.green,
           Icons.check_circle_outline,
           support.supportsDynamicIsland
               ? 'Ready — this device has a Dynamic Island.'
-              : 'Ready — Lock Screen only (no Dynamic Island on this device).',
+              : support.supportsLiveUpdates
+                  ? 'Ready — Android Live Updates (status bar / lock screen).'
+                  : support.systemVersion.startsWith('Android')
+                      ? 'Ready — Android ongoing notification (Live Updates need Android 16+).'
+                      : 'Ready — Lock Screen only (no Dynamic Island on this device).',
         ),
     };
 

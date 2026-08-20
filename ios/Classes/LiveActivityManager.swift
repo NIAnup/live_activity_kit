@@ -66,6 +66,7 @@ final class LiveActivityManager {
             "isSupported": true,
             "areActivitiesEnabled": info.areActivitiesEnabled,
             "supportsDynamicIsland": Self.hasDynamicIsland,
+            "supportsLiveUpdates": false,
             "systemVersion": UIDeviceSystemVersion,
         ]
     }

@@ -1,5 +1,5 @@
-/// A universal, component-based framework for iOS Live Activities and the
-/// Dynamic Island, driven entirely from Dart.
+/// A universal, component-based framework for iOS Live Activities / Dynamic
+/// Island and Android Live Updates (ongoing notifications), driven from Dart.
 ///
 /// Apple does not let Flutter render inside a Live Activity — the UI must be
 /// SwiftUI, in a widget extension. This package closes that gap by shipping a

@@ -91,7 +91,7 @@ class MethodChannelLiveActivity extends LiveActivityPlatform {
     } on MissingPluginException {
       throw const LiveActivityException(
         'unsupported',
-        'live_activity_kit is only implemented on iOS 16.1+',
+        'live_activity_kit is only implemented on iOS 16.1+ and Android API 26+',
       );
     }
   }

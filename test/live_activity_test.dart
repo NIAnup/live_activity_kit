@@ -244,5 +244,18 @@ void main() {
           reason: 'cached');
       expect((await LiveActivity.support(refresh: true)).canStart, isFalse);
     });
+
+    test('parses Android Live Updates from JSON', () {
+      final support = LiveActivitySupport.fromJson({
+        'isSupported': true,
+        'areActivitiesEnabled': true,
+        'supportsDynamicIsland': false,
+        'supportsLiveUpdates': true,
+        'systemVersion': 'Android 36',
+      });
+      expect(support.canStart, isTrue);
+      expect(support.supportsLiveUpdates, isTrue);
+      expect(support.supportsDynamicIsland, isFalse);
+    });
   });
 }

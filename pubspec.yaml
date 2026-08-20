@@ -1,7 +1,8 @@
 name: live_activity_kit
 description: >-
-  Build iOS Live Activities and Dynamic Island widgets from Dart. Component DSL,
-  SwiftUI renderer, ActivityKit, App Groups and APNs push updates — no Swift code.
+  Build iOS Live Activities and Dynamic Island widgets, plus Android Live Updates
+  / ongoing notifications, from Dart. Component DSL, SwiftUI renderer, ActivityKit,
+  App Groups and APNs push updates — no Swift code.
 version: 1.0.0
 repository: https://github.com/NIAnup/live_activity_kit
 issue_tracker: https://github.com/NIAnup/live_activity_kit/issues
@@ -10,6 +11,7 @@ topics:
   - dynamic-island
   - activitykit
   - ios
+  - android
   - widgets
 
 environment:
@@ -34,6 +36,9 @@ flutter:
       ios:
         pluginClass: LiveActivityKitPlugin
         sharedDarwinSource: false
+      android:
+        package: com.nianup.live_activity_kit
+        pluginClass: LiveActivityKitPlugin
 
 # `dart run live_activity_kit:setup` resolves to bin/setup.dart
 executables:
