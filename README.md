@@ -735,7 +735,9 @@ On iOS 17.2+, yes — `LiveActivity.pushToStartToken()`.
 Yes. The same `LiveActivity.show` / `update` / `end` API posts an ongoing notification
 on API 26+. On Android 16+ it requests Live Updates (`setRequestPromotedOngoing`) when
 the layout includes progress. There is no Dynamic Island. `LiveActivity.support()`
-reports `supportsLiveUpdates` when the system will promote the notification.
+reports `supportsLiveUpdates` when the system will promote the notification. Read
+[Known Android limitations](#known-android-limitations) before you rely on it for
+long-running work.
 
 **How do I test without a device?**
 Set `LiveActivityPlatform.instance = YourFakePlatform()`. The platform interface is public
