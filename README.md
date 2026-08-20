@@ -212,13 +212,15 @@ That's the whole API surface for most apps: `show`, `update`, `end`.
 | **iOS** | 16.1+ (Lock Screen), iPhone 14 Pro and later for the Dynamic Island |
 | **Android** | API 26+ ongoing notifications; Android 16+ Live Updates (status bar chip / lock screen) when the system promotes them |
 | **Xcode** | 15 or newer (iOS) |
-| **Flutter** | 3.32 or newer — the Android side needs `compileSdk 36`, which Flutter supplies from 3.32 |
+| **Flutter** | 3.27 or newer |
 | **Device** | Real device required on iOS 16; the iOS 17+ simulator works. Android emulator is fine. |
 
-> **Android `compileSdk`.** This plugin compiles against SDK 36. If your app pins an
-> older `compileSdk`, Gradle fails with *"dependency requires compileSdk 36"* — set
-> `compileSdk = 36` in `android/app/build.gradle.kts`, or let Flutter 3.32+ supply it
-> via `flutter.compileSdkVersion`.
+> **No Gradle changes needed.** The plugin builds against `compileSdk 35` with
+> `minSdk 21`, so `flutter pub add live_activity_kit` is the whole install — you do not
+> have to raise your app's `minSdk` or `compileSdk`. Below API 26 every call throws
+> `LiveActivityException('unsupported')`. Android 16 Live Updates are invoked
+> reflectively, so they light up on Android 16+ devices without pulling every consumer
+> onto `compileSdk 36`.
 
 Web and desktop remain safe no-ops: `LiveActivity.support()` reports `isSupported: false`
 and calls throw `LiveActivityException('unsupported', …)`, so one codebase ships everywhere.

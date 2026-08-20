@@ -368,11 +368,11 @@ internal class LiveActivityManager(private val context: Context) {
     }
 
     sealed class Failure(val code: String, override val message: String) : Exception(message) {
-        data object Unsupported : Failure(
+        object Unsupported : Failure(
             "unsupported",
             "Live activities on Android require API 26 (notification channels).",
         )
-        data object Disabled : Failure(
+        object Disabled : Failure(
             "disabled",
             "Notification permission is off for this app. Enable it in Settings.",
         )
