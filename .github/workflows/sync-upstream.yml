@@ -1,4 +1,4 @@
-name: Sync Upstream
+name: Sync Upstream & Update Custom Branch
 
 on:
   schedule:
@@ -11,13 +11,13 @@ permissions:
 
 jobs:
   sync:
-    name: Sync with Upstream
+    name: Sync Upstream to Custom Branch
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout custom branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: custom-main
           fetch-depth: 0
 
       - name: Configure Git
@@ -25,15 +25,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add and Fetch Upstream
+      - name: Sync upstream to upstream-main branch
         run: |
           git remote add upstream https://github.com/NIAnup/live_activity_kit.git || true
           git fetch upstream
+          # 1. Update pure mirror branch upstream-main to 100% match official repository
+          git checkout -B upstream-main upstream/main
+          git push origin upstream-main --force
 
-      - name: Merge Upstream Changes
+      - name: Safely merge upstream into custom-main
         run: |
-          git merge upstream/main -m "chore: merge upstream changes from NIAnup/live_activity_kit" || (echo "Merge conflict occurred! Please resolve manually." && exit 1)
-
-      - name: Push to Fork
-        run: |
-          git push origin main
+          # 2. Switch back to your custom branch and merge official changes safely
+          git checkout custom-main
+          git merge upstream-main -m "chore: merge upstream updates into custom-main"
+          # 3. Push your updated custom branch
+          git push origin custom-main
