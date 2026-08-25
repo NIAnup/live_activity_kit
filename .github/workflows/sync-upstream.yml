@@ -1,0 +1,39 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # Runs daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync with Upstream
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add and Fetch Upstream
+        run: |
+          git remote add upstream https://github.com/NIAnup/live_activity_kit.git || true
+          git fetch upstream
+
+      - name: Merge Upstream Changes
+        run: |
+          git merge upstream/main -m "chore: merge upstream changes from NIAnup/live_activity_kit" || (echo "Merge conflict occurred! Please resolve manually." && exit 1)
+
+      - name: Push to Fork
+        run: |
+          git push origin main

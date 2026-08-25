@@ -256,11 +256,36 @@ internal class LiveActivityManager(private val context: Context) {
         val pkg = context.resources.getResourcePackageName(R.layout.live_activity_notification)
         val views = RemoteViews(pkg, R.layout.live_activity_notification)
         views.setTextViewText(R.id.la_title, model.title)
+
+        if (model.iconBitmap != null) {
+            views.setViewVisibility(R.id.la_icon, View.VISIBLE)
+            views.setImageViewBitmap(R.id.la_icon, model.iconBitmap)
+        } else {
+            views.setViewVisibility(R.id.la_icon, View.GONE)
+        }
+
+        if (model.subtitle.isNullOrBlank()) {
+            views.setViewVisibility(R.id.la_subtitle, View.GONE)
+        } else {
+            views.setViewVisibility(R.id.la_subtitle, View.VISIBLE)
+            views.setTextViewText(R.id.la_subtitle, model.subtitle)
+        }
+
         if (model.body.isBlank()) {
             views.setViewVisibility(R.id.la_body, View.GONE)
         } else {
             views.setViewVisibility(R.id.la_body, View.VISIBLE)
             views.setTextViewText(R.id.la_body, model.body)
+        }
+
+        if (model.badgeText.isNullOrBlank()) {
+            views.setViewVisibility(R.id.la_badge, View.GONE)
+        } else {
+            views.setViewVisibility(R.id.la_badge, View.VISIBLE)
+            views.setTextViewText(R.id.la_badge, model.badgeText)
+            model.badgeColorArgb?.let {
+                views.setInt(R.id.la_badge, "setBackgroundColor", it)
+            }
         }
 
         val until = model.countdownUntilEpochSec
