@@ -1,6 +1,7 @@
 package com.nianup.live_activity_kit
 
 import android.app.Activity
+import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.core.app.ActivityCompat
@@ -22,6 +23,7 @@ class LiveActivityKitPlugin :
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
     private lateinit var store: SharedPreferences
+    private var applicationContext: Context? = null
     private var activityBinding: ActivityPluginBinding? = null
     private var eventSink: EventChannel.EventSink? = null
     private val pendingEvents = ArrayDeque<Map<String, Any?>>()
@@ -29,6 +31,7 @@ class LiveActivityKitPlugin :
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val context = binding.applicationContext
+        applicationContext = context
         manager = LiveActivityManager(context)
         manager?.onEvent = { send(it) }
         store = context.getSharedPreferences(STORE_PREFS, android.content.Context.MODE_PRIVATE)
@@ -43,6 +46,7 @@ class LiveActivityKitPlugin :
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         manager = null
+        applicationContext = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -196,8 +200,19 @@ class LiveActivityKitPlugin :
         }
     }
 
-    private fun requireManager(): LiveActivityManager =
-        manager ?: throw LiveActivityManager.Failure.Unsupported
+    private fun requireManager(): LiveActivityManager {
+        var m = manager
+        if (m == null) {
+            val ctx = applicationContext ?: activityBinding?.activity?.applicationContext
+            if (ctx != null) {
+                m = LiveActivityManager(ctx).apply {
+                    onEvent = { send(it) }
+                }
+                manager = m
+            }
+        }
+        return m ?: throw LiveActivityManager.Failure.Unsupported
+    }
 
     companion object {
         private const val STORE_PREFS = "live_activity_kit_store"
