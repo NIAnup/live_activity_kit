@@ -422,7 +422,7 @@ internal class LiveActivityManager(private val context: Context) {
     private fun notifyId(id: String): Int = 0x4A1C0000 or (id.hashCode() and 0xFFFF)
 
     companion object {
-        const val CHANNEL_ID = "live_activity_promoted_v1"
+        const val CHANNEL_ID = "live_activity_kit"
 
         fun hasNotificationPermission(context: Context): Boolean {
             if (Build.VERSION.SDK_INT < 33) return true
