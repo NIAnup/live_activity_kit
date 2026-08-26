@@ -180,7 +180,9 @@ internal class LiveActivityManager(private val context: Context) {
         ).apply {
             description = context.getString(R.string.live_activity_channel_description)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setShowBadge(false)
+            setShowBadge(true)
+            enableVibration(true)
+            enableLights(true)
         }
         notifications.createNotificationChannel(channel)
     }
@@ -201,6 +203,7 @@ internal class LiveActivityManager(private val context: Context) {
             .setOnlyAlertOnce(alert == null)
             .setAutoCancel(!ongoing)
             .setCategory(Notification.CATEGORY_CALL)
+            .setPriority(Notification.PRIORITY_MAX)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(pending(id, LiveActivityActionReceiver.ACTION_TAP, model.deepLink))
             .setDeleteIntent(pending(id, LiveActivityActionReceiver.ACTION_DISMISS, null))
@@ -220,8 +223,9 @@ internal class LiveActivityManager(private val context: Context) {
                 else -> model.body.ifBlank { null }
             }
             builder.setContentText(text)
-            if (model.progress == null && model.body.isNotBlank()) {
-                builder.setStyle(Notification.BigTextStyle().bigText(model.body))
+            val fullBody = listOfNotNull(model.subtitle?.takeIf { it.isNotBlank() }, model.body.takeIf { it.isNotBlank() }).joinToString("\n")
+            if (model.progress == null && fullBody.isNotBlank()) {
+                builder.setStyle(Notification.BigTextStyle().bigText(fullBody).setBigContentTitle(model.title))
             }
             applyLiveUpdates(builder, model, ongoing)
         } else {
@@ -237,7 +241,7 @@ internal class LiveActivityManager(private val context: Context) {
             builder.setContentTitle(alert["title"]?.toString() ?: model.title)
             builder.setContentText(alert["body"]?.toString() ?: model.body)
             builder.setDefaults(Notification.DEFAULT_ALL)
-            builder.setPriority(Notification.PRIORITY_HIGH)
+            builder.setPriority(Notification.PRIORITY_MAX)
         }
 
         notifications.notify(notifyId(id), builder.build())
@@ -418,7 +422,7 @@ internal class LiveActivityManager(private val context: Context) {
     private fun notifyId(id: String): Int = 0x4A1C0000 or (id.hashCode() and 0xFFFF)
 
     companion object {
-        const val CHANNEL_ID = "live_activity_kit"
+        const val CHANNEL_ID = "live_activity_promoted_v1"
 
         fun hasNotificationPermission(context: Context): Boolean {
             if (Build.VERSION.SDK_INT < 33) return true
