@@ -11,6 +11,7 @@ class LiveActivityActionReceiver : BroadcastReceiver() {
             ACTION_TAP -> {
                 val url = intent.getStringExtra(EXTRA_URL)
                 LiveActivityKitPlugin.managerOrNull?.onTapped(id, url)
+                var launched = false
                 if (!url.isNullOrEmpty()) {
                     val launch = Intent(Intent.ACTION_VIEW).apply {
                         data = android.net.Uri.parse(url)
@@ -19,11 +20,19 @@ class LiveActivityActionReceiver : BroadcastReceiver() {
                     }
                     try {
                         context.startActivity(launch)
-                    } catch (_: Exception) {
-                        val launcher = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                        launcher?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        launched = true
+                    } catch (_: Exception) {}
+                }
+                if (!launched) {
+                    val launcher = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                    launcher?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    if (!url.isNullOrEmpty()) {
                         launcher?.data = android.net.Uri.parse(url)
-                        if (launcher != null) context.startActivity(launcher)
+                    }
+                    if (launcher != null) {
+                        try {
+                            context.startActivity(launcher)
+                        } catch (_: Exception) {}
                     }
                 }
             }

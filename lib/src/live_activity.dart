@@ -351,7 +351,7 @@ abstract final class LiveActivity {
   static String _encode(String id, LiveActivityLayout layout) {
     final json = jsonEncode(layout.toJson());
     final bytes = utf8.encode(json).length;
-    if (bytes > maxPayloadBytes) {
+    if (defaultTargetPlatform == TargetPlatform.iOS && bytes > maxPayloadBytes) {
       throw LiveActivityException(
         'payload_too_large',
         'Live Activity "$id" serialized to $bytes bytes; iOS allows at most '

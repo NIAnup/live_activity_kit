@@ -134,13 +134,7 @@ internal object LayoutFlattener {
         when (node.optString("type")) {
             "text" -> {
                 val value = node.optString("value")
-                if (value.isNotEmpty()) {
-                    if (value.startsWith("⚠️") || value.contains("Fraud") || value.contains("诈骗")) {
-                        capture(null, null, null, null, null, null, value, parseColor("#D32F2F"))
-                    } else {
-                        texts.add(value)
-                    }
-                }
+                if (value.isNotEmpty()) texts.add(value)
             }
             "badge" -> {
                 val value = node.optString("value")
@@ -150,12 +144,15 @@ internal object LayoutFlattener {
                 }
             }
             "image" -> {
-                val base64Str = node.optString("bytes", null)
+                val base64Str = node.optString("bytes", null)?.takeIf { it.isNotEmpty() }
+                    ?: node.optString("value", null)?.takeIf { it.isNotEmpty() }
                 if (!base64Str.isNullOrEmpty()) {
                     try {
                         val bytes = Base64.decode(base64Str, Base64.DEFAULT)
                         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        onImage(bmp)
+                        if (bmp != null) {
+                            onImage(bmp)
+                        }
                     } catch (_: Throwable) {}
                 }
             }
@@ -185,7 +182,17 @@ internal object LayoutFlattener {
                 node.optString("suffix", null)?.takeIf { it.isNotEmpty() },
                 null, null,
             )
-            "padding", "container" -> walk(node.optJSONObject("child"), texts, onImage, capture)
+            "container" -> {
+                val bg = parseColor(node.optString("background", null))
+                val child = node.optJSONObject("child")
+                val childText = if (child?.optString("type") == "text") child.optString("value") else null
+                if (bg != null && !childText.isNullOrEmpty()) {
+                    capture(null, null, null, null, null, null, childText, bg)
+                } else {
+                    walk(child, texts, onImage, capture)
+                }
+            }
+            "padding" -> walk(node.optJSONObject("child"), texts, onImage, capture)
             else -> {
                 walk(node.optJSONObject("child"), texts, onImage, capture)
                 children(node).forEach { walk(it, texts, onImage, capture) }

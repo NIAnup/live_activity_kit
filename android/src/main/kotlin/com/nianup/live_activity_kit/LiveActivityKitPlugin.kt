@@ -32,8 +32,8 @@ class LiveActivityKitPlugin :
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val context = binding.applicationContext
         applicationContext = context
-        manager = LiveActivityManager(context)
-        manager?.onEvent = { send(it) }
+        val m = manager ?: LiveActivityManager(context).also { manager = it }
+        m.onEvent = { send(it) }
         store = context.getSharedPreferences(STORE_PREFS, android.content.Context.MODE_PRIVATE)
 
         methodChannel = MethodChannel(binding.binaryMessenger, "live_activity_kit")
@@ -45,8 +45,6 @@ class LiveActivityKitPlugin :
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
-        manager = null
-        applicationContext = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -93,8 +91,8 @@ class LiveActivityKitPlugin :
             }
         } catch (error: LiveActivityManager.Failure) {
             result.error(error.code, error.message, null)
-        } catch (error: Exception) {
-            result.error("unknown", error.message, null)
+        } catch (error: Throwable) {
+            result.error("unknown", error.message ?: error.toString(), null)
         }
     }
 

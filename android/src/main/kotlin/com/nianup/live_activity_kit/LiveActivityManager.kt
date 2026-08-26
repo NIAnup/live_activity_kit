@@ -61,7 +61,11 @@ internal class LiveActivityManager(private val context: Context) {
     fun update(args: Map<String, Any?>) {
         ensureReady()
         val id = requireId(args)
-        val record = running[id] ?: throw Failure.NotFound(id)
+        val record = running[id]
+        if (record == null) {
+            request(args)
+            return
+        }
         val layout = args["layout"] as? String ?: record.layout
         record.layout = layout
         record.state = "active"
@@ -71,7 +75,7 @@ internal class LiveActivityManager(private val context: Context) {
 
     fun end(args: Map<String, Any?>) {
         val id = requireId(args)
-        val record = running[id] ?: throw Failure.NotFound(id)
+        val record = running[id] ?: return
         val layout = args["layout"] as? String ?: record.layout
         record.layout = layout
         record.state = "ended"
@@ -172,7 +176,7 @@ internal class LiveActivityManager(private val context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
             context.getString(R.string.live_activity_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = context.getString(R.string.live_activity_channel_description)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -188,31 +192,54 @@ internal class LiveActivityManager(private val context: Context) {
         ongoing: Boolean,
     ) {
         val model = LayoutFlattener.flatten(layout)
-        val content = buildRemoteViews(model)
+        val isApi36LiveUpdate = Build.VERSION.SDK_INT >= 36 && ongoing
+
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_live_activity)
             .setContentTitle(model.title)
-            .setContentText(model.body.ifBlank { null })
             .setOngoing(ongoing)
             .setOnlyAlertOnce(alert == null)
             .setAutoCancel(!ongoing)
-            .setCategory(Notification.CATEGORY_PROGRESS)
+            .setCategory(Notification.CATEGORY_CALL)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(pending(id, LiveActivityActionReceiver.ACTION_TAP, model.deepLink))
             .setDeleteIntent(pending(id, LiveActivityActionReceiver.ACTION_DISMISS, null))
-            .setCustomContentView(content)
-            .setCustomBigContentView(content)
-            .setStyle(Notification.DecoratedCustomViewStyle())
 
-        model.tintArgb?.let { builder.setColor(it).setColorized(true) }
+        if (model.iconBitmap != null) {
+            builder.setLargeIcon(model.iconBitmap)
+        }
+
+        if (model.badgeText != null) {
+            builder.setSubText(model.badgeText)
+        }
+
+        if (isApi36LiveUpdate) {
+            val text = when {
+                !model.subtitle.isNullOrBlank() && model.body.isNotBlank() -> "${model.subtitle} · ${model.body}"
+                !model.subtitle.isNullOrBlank() -> model.subtitle
+                else -> model.body.ifBlank { null }
+            }
+            builder.setContentText(text)
+            if (model.progress == null && model.body.isNotBlank()) {
+                builder.setStyle(Notification.BigTextStyle().bigText(model.body))
+            }
+            applyLiveUpdates(builder, model, ongoing)
+        } else {
+            val content = buildRemoteViews(model)
+            builder.setContentText(model.body.ifBlank { null })
+                .setCustomContentView(content)
+                .setCustomBigContentView(content)
+                .setStyle(Notification.DecoratedCustomViewStyle())
+            model.tintArgb?.let { builder.setColor(it).setColorized(true) }
+        }
 
         if (alert != null) {
             builder.setContentTitle(alert["title"]?.toString() ?: model.title)
             builder.setContentText(alert["body"]?.toString() ?: model.body)
             builder.setDefaults(Notification.DEFAULT_ALL)
+            builder.setPriority(Notification.PRIORITY_HIGH)
         }
 
-        applyLiveUpdates(builder, model, ongoing)
         notifications.notify(notifyId(id), builder.build())
     }
 
@@ -235,18 +262,28 @@ internal class LiveActivityManager(private val context: Context) {
             builder.javaClass
                 .getMethod("setRequestPromotedOngoing", java.lang.Boolean.TYPE)
                 .invoke(builder, true)
-            val progress = model.progress ?: return
-            val pct = (progress.coerceIn(0.0, 1.0) * 100).toInt()
-            val styleClass = Class.forName("android.app.Notification\$ProgressStyle")
-            val style = styleClass.getDeclaredConstructor().newInstance()
-            styleClass.getMethod("setStyledByProgress", java.lang.Boolean.TYPE)
-                .invoke(style, true)
-            styleClass.getMethod("setProgress", Integer.TYPE).invoke(style, pct)
-            val segmentClass = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
-            val segment = segmentClass.getConstructor(Integer.TYPE).newInstance(100)
-            styleClass.getMethod("setProgressSegments", MutableList::class.java)
-                .invoke(style, listOf(segment))
-            builder.setStyle(style as Notification.Style)
+
+            val chipText = (model.badgeText ?: model.title).take(7)
+            try {
+                builder.javaClass
+                    .getMethod("setShortCriticalText", java.lang.CharSequence::class.java)
+                    .invoke(builder, chipText)
+            } catch (_: Throwable) {}
+
+            val progress = model.progress
+            if (progress != null) {
+                val pct = (progress.coerceIn(0.0, 1.0) * 100).toInt()
+                val styleClass = Class.forName("android.app.Notification\$ProgressStyle")
+                val style = styleClass.getDeclaredConstructor().newInstance()
+                styleClass.getMethod("setStyledByProgress", java.lang.Boolean.TYPE)
+                    .invoke(style, true)
+                styleClass.getMethod("setProgress", Integer.TYPE).invoke(style, pct)
+                val segmentClass = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
+                val segment = segmentClass.getConstructor(Integer.TYPE).newInstance(100)
+                styleClass.getMethod("setProgressSegments", MutableList::class.java)
+                    .invoke(style, listOf(segment))
+                builder.setStyle(style as Notification.Style)
+            }
         } catch (_: Throwable) {
             // compileSdk / runtime may not have Live Updates yet.
         }
