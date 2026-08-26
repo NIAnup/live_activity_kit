@@ -135,9 +135,12 @@ internal class LiveActivityManager(private val context: Context) {
 
     fun onTapped(id: String, url: String?) {
         val link = url?.takeIf { it.isNotEmpty() } ?: deepLinkOf(id)
+        cancel(id)
+        running.remove(id)
         if (!link.isNullOrEmpty()) {
             onEvent?.invoke(mapOf("type" to "deepLink", "url" to link))
         }
+        emitState(id, "dismissed")
     }
 
     private fun deepLinkOf(id: String): String? {
