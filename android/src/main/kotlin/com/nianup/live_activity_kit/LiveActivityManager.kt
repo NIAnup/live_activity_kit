@@ -199,10 +199,13 @@ internal class LiveActivityManager(private val context: Context) {
         val model = LayoutFlattener.flatten(layout)
         val isApi36LiveUpdate = Build.VERSION.SDK_INT >= 36 && ongoing
 
+        val smallIconRes = context.applicationInfo.icon.takeIf { it != 0 } ?: R.drawable.ic_live_activity
+
         val builder = Notification.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_live_activity)
+            .setSmallIcon(smallIconRes)
             .setContentTitle(model.title)
             .setOngoing(ongoing)
+            .setShowWhen(false)
             .setOnlyAlertOnce(alert == null)
             .setAutoCancel(!ongoing)
             .setCategory(Notification.CATEGORY_CALL)
@@ -266,15 +269,13 @@ internal class LiveActivityManager(private val context: Context) {
     ) {
         if (!ongoing || Build.VERSION.SDK_INT < 36) return
         try {
-            builder.javaClass
-                .getMethod("setRequestPromotedOngoing", java.lang.Boolean.TYPE)
-                .invoke(builder, true)
+            val promoteMethod = builder.javaClass.methods.firstOrNull { it.name == "setRequestPromotedOngoing" }
+            promoteMethod?.invoke(builder, true)
 
             val chipText = (model.badgeText ?: model.title).take(7)
             try {
-                builder.javaClass
-                    .getMethod("setShortCriticalText", java.lang.CharSequence::class.java)
-                    .invoke(builder, chipText)
+                val shortTextMethod = builder.javaClass.methods.firstOrNull { it.name == "setShortCriticalText" }
+                shortTextMethod?.invoke(builder, chipText)
             } catch (_: Throwable) {}
 
             val progress = model.progress
