@@ -61,7 +61,11 @@ internal class LiveActivityManager(private val context: Context) {
     fun update(args: Map<String, Any?>) {
         ensureReady()
         val id = requireId(args)
-        val record = running[id] ?: throw Failure.NotFound(id)
+        val record = running[id]
+        if (record == null) {
+            request(args)
+            return
+        }
         val layout = args["layout"] as? String ?: record.layout
         record.layout = layout
         record.state = "active"
@@ -71,7 +75,7 @@ internal class LiveActivityManager(private val context: Context) {
 
     fun end(args: Map<String, Any?>) {
         val id = requireId(args)
-        val record = running[id] ?: throw Failure.NotFound(id)
+        val record = running[id] ?: return
         val layout = args["layout"] as? String ?: record.layout
         record.layout = layout
         record.state = "ended"
@@ -131,9 +135,12 @@ internal class LiveActivityManager(private val context: Context) {
 
     fun onTapped(id: String, url: String?) {
         val link = url?.takeIf { it.isNotEmpty() } ?: deepLinkOf(id)
+        cancel(id)
+        running.remove(id)
         if (!link.isNullOrEmpty()) {
             onEvent?.invoke(mapOf("type" to "deepLink", "url" to link))
         }
+        emitState(id, "dismissed")
     }
 
     private fun deepLinkOf(id: String): String? {
@@ -172,11 +179,13 @@ internal class LiveActivityManager(private val context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
             context.getString(R.string.live_activity_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = context.getString(R.string.live_activity_channel_description)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            setShowBadge(false)
+            setShowBadge(true)
+            enableVibration(true)
+            enableLights(true)
         }
         notifications.createNotificationChannel(channel)
     }
@@ -188,31 +197,64 @@ internal class LiveActivityManager(private val context: Context) {
         ongoing: Boolean,
     ) {
         val model = LayoutFlattener.flatten(layout)
-        val content = buildRemoteViews(model)
+        val isApi36LiveUpdate = Build.VERSION.SDK_INT >= 36 && ongoing
+
+        val notifIcon = context.resources.getIdentifier("ic_notification", "drawable", context.packageName)
+        val smallIconRes = when {
+            notifIcon != 0 -> notifIcon
+            context.applicationInfo.icon != 0 -> context.applicationInfo.icon
+            else -> R.drawable.ic_live_activity
+        }
+
         val builder = Notification.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_live_activity)
+            .setSmallIcon(smallIconRes)
             .setContentTitle(model.title)
-            .setContentText(model.body.ifBlank { null })
             .setOngoing(ongoing)
+            .setShowWhen(false)
             .setOnlyAlertOnce(alert == null)
             .setAutoCancel(!ongoing)
-            .setCategory(Notification.CATEGORY_PROGRESS)
+            .setCategory(Notification.CATEGORY_CALL)
+            .setPriority(Notification.PRIORITY_MAX)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(pending(id, LiveActivityActionReceiver.ACTION_TAP, model.deepLink))
             .setDeleteIntent(pending(id, LiveActivityActionReceiver.ACTION_DISMISS, null))
-            .setCustomContentView(content)
-            .setCustomBigContentView(content)
-            .setStyle(Notification.DecoratedCustomViewStyle())
 
-        model.tintArgb?.let { builder.setColor(it).setColorized(true) }
+        if (model.iconBitmap != null) {
+            builder.setLargeIcon(model.iconBitmap)
+        }
+
+        if (model.badgeText != null) {
+            builder.setSubText(model.badgeText)
+        }
+
+        if (isApi36LiveUpdate) {
+            val text = when {
+                !model.subtitle.isNullOrBlank() && model.body.isNotBlank() -> "${model.subtitle} · ${model.body}"
+                !model.subtitle.isNullOrBlank() -> model.subtitle
+                else -> model.body.ifBlank { null }
+            }
+            builder.setContentText(text)
+            val fullBody = listOfNotNull(model.subtitle?.takeIf { it.isNotBlank() }, model.body.takeIf { it.isNotBlank() }).joinToString("\n")
+            if (model.progress == null && fullBody.isNotBlank()) {
+                builder.setStyle(Notification.BigTextStyle().bigText(fullBody).setBigContentTitle(model.title))
+            }
+            applyLiveUpdates(builder, model, ongoing)
+        } else {
+            val content = buildRemoteViews(model)
+            builder.setContentText(model.body.ifBlank { null })
+                .setCustomContentView(content)
+                .setCustomBigContentView(content)
+                .setStyle(Notification.DecoratedCustomViewStyle())
+            model.tintArgb?.let { builder.setColor(it).setColorized(true) }
+        }
 
         if (alert != null) {
             builder.setContentTitle(alert["title"]?.toString() ?: model.title)
             builder.setContentText(alert["body"]?.toString() ?: model.body)
             builder.setDefaults(Notification.DEFAULT_ALL)
+            builder.setPriority(Notification.PRIORITY_MAX)
         }
 
-        applyLiveUpdates(builder, model, ongoing)
         notifications.notify(notifyId(id), builder.build())
     }
 
@@ -232,21 +274,29 @@ internal class LiveActivityManager(private val context: Context) {
     ) {
         if (!ongoing || Build.VERSION.SDK_INT < 36) return
         try {
-            builder.javaClass
-                .getMethod("setRequestPromotedOngoing", java.lang.Boolean.TYPE)
-                .invoke(builder, true)
-            val progress = model.progress ?: return
-            val pct = (progress.coerceIn(0.0, 1.0) * 100).toInt()
-            val styleClass = Class.forName("android.app.Notification\$ProgressStyle")
-            val style = styleClass.getDeclaredConstructor().newInstance()
-            styleClass.getMethod("setStyledByProgress", java.lang.Boolean.TYPE)
-                .invoke(style, true)
-            styleClass.getMethod("setProgress", Integer.TYPE).invoke(style, pct)
-            val segmentClass = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
-            val segment = segmentClass.getConstructor(Integer.TYPE).newInstance(100)
-            styleClass.getMethod("setProgressSegments", MutableList::class.java)
-                .invoke(style, listOf(segment))
-            builder.setStyle(style as Notification.Style)
+            val promoteMethod = builder.javaClass.methods.firstOrNull { it.name == "setRequestPromotedOngoing" }
+            promoteMethod?.invoke(builder, true)
+
+            val chipText = (model.badgeText ?: model.title).take(7)
+            try {
+                val shortTextMethod = builder.javaClass.methods.firstOrNull { it.name == "setShortCriticalText" }
+                shortTextMethod?.invoke(builder, chipText)
+            } catch (_: Throwable) {}
+
+            val progress = model.progress
+            if (progress != null) {
+                val pct = (progress.coerceIn(0.0, 1.0) * 100).toInt()
+                val styleClass = Class.forName("android.app.Notification\$ProgressStyle")
+                val style = styleClass.getDeclaredConstructor().newInstance()
+                styleClass.getMethod("setStyledByProgress", java.lang.Boolean.TYPE)
+                    .invoke(style, true)
+                styleClass.getMethod("setProgress", Integer.TYPE).invoke(style, pct)
+                val segmentClass = Class.forName("android.app.Notification\$ProgressStyle\$Segment")
+                val segment = segmentClass.getConstructor(Integer.TYPE).newInstance(100)
+                styleClass.getMethod("setProgressSegments", MutableList::class.java)
+                    .invoke(style, listOf(segment))
+                builder.setStyle(style as Notification.Style)
+            }
         } catch (_: Throwable) {
             // compileSdk / runtime may not have Live Updates yet.
         }
@@ -256,11 +306,36 @@ internal class LiveActivityManager(private val context: Context) {
         val pkg = context.resources.getResourcePackageName(R.layout.live_activity_notification)
         val views = RemoteViews(pkg, R.layout.live_activity_notification)
         views.setTextViewText(R.id.la_title, model.title)
+
+        if (model.iconBitmap != null) {
+            views.setViewVisibility(R.id.la_icon, View.VISIBLE)
+            views.setImageViewBitmap(R.id.la_icon, model.iconBitmap)
+        } else {
+            views.setViewVisibility(R.id.la_icon, View.GONE)
+        }
+
+        if (model.subtitle.isNullOrBlank()) {
+            views.setViewVisibility(R.id.la_subtitle, View.GONE)
+        } else {
+            views.setViewVisibility(R.id.la_subtitle, View.VISIBLE)
+            views.setTextViewText(R.id.la_subtitle, model.subtitle)
+        }
+
         if (model.body.isBlank()) {
             views.setViewVisibility(R.id.la_body, View.GONE)
         } else {
             views.setViewVisibility(R.id.la_body, View.VISIBLE)
             views.setTextViewText(R.id.la_body, model.body)
+        }
+
+        if (model.badgeText.isNullOrBlank()) {
+            views.setViewVisibility(R.id.la_badge, View.GONE)
+        } else {
+            views.setViewVisibility(R.id.la_badge, View.VISIBLE)
+            views.setTextViewText(R.id.la_badge, model.badgeText)
+            model.badgeColorArgb?.let {
+                views.setInt(R.id.la_badge, "setBackgroundColor", it)
+            }
         }
 
         val until = model.countdownUntilEpochSec

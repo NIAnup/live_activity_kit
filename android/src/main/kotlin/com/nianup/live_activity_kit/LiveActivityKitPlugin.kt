@@ -1,6 +1,7 @@
 package com.nianup.live_activity_kit
 
 import android.app.Activity
+import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.core.app.ActivityCompat
@@ -22,6 +23,7 @@ class LiveActivityKitPlugin :
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
     private lateinit var store: SharedPreferences
+    private var applicationContext: Context? = null
     private var activityBinding: ActivityPluginBinding? = null
     private var eventSink: EventChannel.EventSink? = null
     private val pendingEvents = ArrayDeque<Map<String, Any?>>()
@@ -29,8 +31,9 @@ class LiveActivityKitPlugin :
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val context = binding.applicationContext
-        manager = LiveActivityManager(context)
-        manager?.onEvent = { send(it) }
+        applicationContext = context
+        val m = manager ?: LiveActivityManager(context).also { manager = it }
+        m.onEvent = { send(it) }
         store = context.getSharedPreferences(STORE_PREFS, android.content.Context.MODE_PRIVATE)
 
         methodChannel = MethodChannel(binding.binaryMessenger, "live_activity_kit")
@@ -42,7 +45,6 @@ class LiveActivityKitPlugin :
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
-        manager = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -89,8 +91,8 @@ class LiveActivityKitPlugin :
             }
         } catch (error: LiveActivityManager.Failure) {
             result.error(error.code, error.message, null)
-        } catch (error: Exception) {
-            result.error("unknown", error.message, null)
+        } catch (error: Throwable) {
+            result.error("unknown", error.message ?: error.toString(), null)
         }
     }
 
@@ -196,8 +198,19 @@ class LiveActivityKitPlugin :
         }
     }
 
-    private fun requireManager(): LiveActivityManager =
-        manager ?: throw LiveActivityManager.Failure.Unsupported
+    private fun requireManager(): LiveActivityManager {
+        var m = manager
+        if (m == null) {
+            val ctx = applicationContext ?: activityBinding?.activity?.applicationContext
+            if (ctx != null) {
+                m = LiveActivityManager(ctx).apply {
+                    onEvent = { send(it) }
+                }
+                manager = m
+            }
+        }
+        return m ?: throw LiveActivityManager.Failure.Unsupported
+    }
 
     companion object {
         private const val STORE_PREFS = "live_activity_kit_store"

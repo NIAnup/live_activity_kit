@@ -1,5 +1,8 @@
 package com.nianup.live_activity_kit
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -12,7 +15,11 @@ internal object LayoutFlattener {
 
     data class Model(
         val title: String,
+        val subtitle: String?,
         val body: String,
+        val badgeText: String?,
+        val badgeColorArgb: Int?,
+        val iconBitmap: Bitmap?,
         val progress: Double?,
         val progressLabel: String?,
         val countdownUntilEpochSec: Double?,
@@ -29,20 +36,25 @@ internal object LayoutFlattener {
         val regions = root.optJSONObject("regions") ?: JSONObject()
         val node = pickRegion(regions)
         val texts = ArrayList<String>()
+        var iconBitmap: Bitmap? = null
         var progress: Double? = null
         var progressLabel: String? = null
         var countdownUntil: Double? = null
         var countdownStyle = "timer"
         var countdownPrefix: String? = null
         var countdownSuffix: String? = null
+        var badgeText: String? = null
+        var badgeColor: Int? = null
 
-        walk(node, texts) { p, label, until, style, prefix, suffix ->
+        walk(node, texts, onImage = { bmp ->
+            if (iconBitmap == null && bmp != null) {
+                iconBitmap = bmp
+            }
+        }, capture = { p, label, until, style, prefix, suffix, badge, badgeClr ->
             if (progress == null && p != null) {
                 progress = p
                 progressLabel = label
             }
-            // A `time` countdown is a static wall-clock label, so it cannot drive the
-            // Chronometer. Let a ticking countdown later in the tree replace it.
             if (until != null &&
                 (countdownUntil == null || (countdownStyle == "time" && style != "time"))
             ) {
@@ -51,14 +63,23 @@ internal object LayoutFlattener {
                 countdownPrefix = prefix
                 countdownSuffix = suffix
             }
-        }
+            if (badgeText == null && badge != null) {
+                badgeText = badge
+                badgeColor = badgeClr
+            }
+        })
 
         val title = texts.firstOrNull().orEmpty().ifBlank { "Live activity" }
-        val body = texts.drop(1).joinToString(" · ")
+        val subtitle = if (texts.size > 1) texts[1] else null
+        val body = if (texts.size > 2) texts.drop(2).joinToString(" · ") else ""
         val theme = root.optJSONObject("theme")
         return Model(
             title = title,
+            subtitle = subtitle,
             body = body,
+            badgeText = badgeText,
+            badgeColorArgb = badgeColor ?: parseColor("#E53935"),
+            iconBitmap = iconBitmap,
             progress = progress,
             progressLabel = progressLabel,
             countdownUntilEpochSec = countdownUntil,
@@ -97,6 +118,7 @@ internal object LayoutFlattener {
     private fun walk(
         node: JSONObject?,
         texts: MutableList<String>,
+        onImage: (Bitmap?) -> Unit,
         capture: (
             progress: Double?,
             progressLabel: String?,
@@ -104,6 +126,8 @@ internal object LayoutFlattener {
             style: String?,
             prefix: String?,
             suffix: String?,
+            badge: String?,
+            badgeColor: Int?,
         ) -> Unit,
     ) {
         if (node == null) return
@@ -112,14 +136,34 @@ internal object LayoutFlattener {
                 val value = node.optString("value")
                 if (value.isNotEmpty()) texts.add(value)
             }
-            "row", "column" -> children(node).forEach { walk(it, texts, capture) }
+            "badge" -> {
+                val value = node.optString("value")
+                val color = parseColor(node.optString("color", null))
+                if (value.isNotEmpty()) {
+                    capture(null, null, null, null, null, null, value, color)
+                }
+            }
+            "image" -> {
+                val base64Str = node.optString("bytes", null)?.takeIf { it.isNotEmpty() }
+                    ?: node.optString("value", null)?.takeIf { it.isNotEmpty() }
+                if (!base64Str.isNullOrEmpty()) {
+                    try {
+                        val bytes = Base64.decode(base64Str, Base64.DEFAULT)
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bmp != null) {
+                            onImage(bmp)
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+            "row", "column" -> children(node).forEach { walk(it, texts, onImage, capture) }
             "progress", "circularProgress" -> {
                 capture(
                     node.optDouble("value", Double.NaN).takeUnless { it.isNaN() },
                     node.optString("label", null)?.takeIf { it.isNotEmpty() },
-                    null, null, null, null,
+                    null, null, null, null, null, null,
                 )
-                walk(node.optJSONObject("center"), texts, capture)
+                walk(node.optJSONObject("center"), texts, onImage, capture)
             }
             "metric" -> {
                 val label = node.optString("label")
@@ -136,11 +180,22 @@ internal object LayoutFlattener {
                 node.optString("style", "timer"),
                 node.optString("prefix", null)?.takeIf { it.isNotEmpty() },
                 node.optString("suffix", null)?.takeIf { it.isNotEmpty() },
+                null, null,
             )
-            "padding", "container" -> walk(node.optJSONObject("child"), texts, capture)
+            "container" -> {
+                val bg = parseColor(node.optString("background", null))
+                val child = node.optJSONObject("child")
+                val childText = if (child?.optString("type") == "text") child.optString("value") else null
+                if (bg != null && !childText.isNullOrEmpty()) {
+                    capture(null, null, null, null, null, null, childText, bg)
+                } else {
+                    walk(child, texts, onImage, capture)
+                }
+            }
+            "padding" -> walk(node.optJSONObject("child"), texts, onImage, capture)
             else -> {
-                walk(node.optJSONObject("child"), texts, capture)
-                children(node).forEach { walk(it, texts, capture) }
+                walk(node.optJSONObject("child"), texts, onImage, capture)
+                children(node).forEach { walk(it, texts, onImage, capture) }
             }
         }
     }
