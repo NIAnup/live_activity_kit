@@ -199,7 +199,12 @@ internal class LiveActivityManager(private val context: Context) {
         val model = LayoutFlattener.flatten(layout)
         val isApi36LiveUpdate = Build.VERSION.SDK_INT >= 36 && ongoing
 
-        val smallIconRes = context.applicationInfo.icon.takeIf { it != 0 } ?: R.drawable.ic_live_activity
+        val notifIcon = context.resources.getIdentifier("ic_notification", "drawable", context.packageName)
+        val smallIconRes = when {
+            notifIcon != 0 -> notifIcon
+            context.applicationInfo.icon != 0 -> context.applicationInfo.icon
+            else -> R.drawable.ic_live_activity
+        }
 
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(smallIconRes)
