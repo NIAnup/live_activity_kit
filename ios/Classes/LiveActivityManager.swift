@@ -227,17 +227,25 @@ final class LiveActivityManager {
 
     func endAll(immediate: Bool) {
         let policy: ActivityUIDismissalPolicy = immediate ? .immediate : .default
-        let running = activities
+
+        // `activities` only remembers the most recent Activity per id: if an
+        // older activity sharing the same id (e.g. our fixed "meeting4") was
+        // never ended before the process relaunched, `restore()` silently
+        // overwrites its dictionary entry, dropping our only reference to it.
+        // Ending everything ActivityKit currently knows about — not just our
+        // cache — guarantees nothing is left orphaned on the Lock Screen.
+        let all = Activity<LiveActivityKitAttributes>.activities
         activities.removeAll()
+
         Task { [weak self] in
-            for (id, activity) in running {
+            for activity in all {
                 if #available(iOS 16.2, *) {
                     await activity.end(nil, dismissalPolicy: policy)
                 } else {
                     await activity.end(using: nil, dismissalPolicy: policy)
                 }
                 guard let self else { return }
-                await MainActor.run { self.cancelObservers(for: id) }
+                await MainActor.run { self.cancelObservers(for: activity.attributes.id) }
             }
         }
     }
