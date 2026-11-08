@@ -115,6 +115,27 @@ internal class LiveActivityManager(private val context: Context) {
                 emitState(id, "ended")
             }
         }
+        cancelOrphanedNotifications()
+    }
+
+    // `running` only reflects activities started by *this* process instance.
+    // If a previous process was killed before it called endAll (or end), its
+    // ongoing notification is still posted at the OS level but no in-memory
+    // record exists for it here, so the loop above can't reach it. Sweep every
+    // currently active notification in our id-space directly so endAll can't
+    // leave orphans behind across process restarts.
+    private fun cancelOrphanedNotifications() {
+        if (Build.VERSION.SDK_INT < 23) return
+        val active = try {
+            notifications.activeNotifications
+        } catch (_: Throwable) {
+            return
+        }
+        for (sbn in active) {
+            if (sbn.id and ID_MASK == ID_MARKER) {
+                notifications.cancel(sbn.id)
+            }
+        }
     }
 
     fun all(): List<Map<String, Any?>> = running.values.map { handle(it.id) }
@@ -353,10 +374,16 @@ internal class LiveActivityManager(private val context: Context) {
     private fun requireId(args: Map<String, Any?>): String =
         args["id"] as? String ?: throw Failure.InvalidArgument("Missing id.")
 
-    private fun notifyId(id: String): Int = 0x4A1C0000 or (id.hashCode() and 0xFFFF)
+    private fun notifyId(id: String): Int = ID_MARKER or (id.hashCode() and 0xFFFF)
 
     companion object {
         const val CHANNEL_ID = "live_activity_kit"
+
+        // Upper 16 bits every notification id from notifyId() is tagged with,
+        // so orphaned notifications can be recognized and swept even when we
+        // no longer know the original activity id (see cancelOrphanedNotifications).
+        private const val ID_MASK = 0xFFFF0000.toInt()
+        private const val ID_MARKER = 0x4A1C0000
 
         fun hasNotificationPermission(context: Context): Boolean {
             if (Build.VERSION.SDK_INT < 33) return true
